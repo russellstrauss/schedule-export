@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const puppeteer = require("puppeteer");
 const { authorize } = require("./google-calendar/auth");
-const { addEvent } = require("./google-calendar/add-event");
+const { addEvent, purgeRhinoEvents } = require("./google-calendar/add-event");
 
 const pad = (num) => num.toString().padStart(2, "0");
 
@@ -58,13 +58,23 @@ const toGoogleEvent = (entry) => {
 	const start = new Date(year, month - 1, day, hours, minutes);
 	const end = new Date(start.getTime() + 60 * 60 * 1000);
 
+	const rowId = [
+		entry.date,
+		entry.callTime,
+		entry.show,
+		entry.venue,
+		entry.position,
+		entry.type
+	].join(" | ");
+
 	return {
 		summary: entry.show,
 		location: [entry.venue, entry.location].filter(Boolean).join(" - "),
 		description: [entry.details, entry.notes].filter(Boolean).join(" | "),
 		start: start.toISOString(),
 		end: end.toISOString(),
-		status: entry.status?.toLowerCase() || "confirmed"
+		status: entry.status?.toLowerCase() || "confirmed",
+		rowId
 	};
 };
 
@@ -113,8 +123,12 @@ async function getSchedule() {
 		}).filter(Boolean);
 	});
 
-	const googleEvents = events.map(toGoogleEvent);
+	const googleEvents = events
+		.map(toGoogleEvent)
+		.filter(event => new Date(event.start) > new Date()); // Skip past events
+
 	const auth = await authorize();
+	await purgeRhinoEvents(auth); // Delete all future Rhino-tagged events
 
 	for (const event of googleEvents) {
 		await addEvent(auth, event);
@@ -125,7 +139,7 @@ async function getSchedule() {
 	const icsContent = [
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
-		"PRODID:-//RHINO//EN",
+		"PRODID:-//YourApp//EN",
 		vevents,
 		"END:VCALENDAR"
 	].join("\r\n");
