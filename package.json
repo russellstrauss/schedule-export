@@ -1,6 +1,9 @@
 {
   "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
     "dotenv": "^17.2.3",
-    "puppeteer": "^24.28.0"
+    "googleapis": "^165.0.0",
+    "puppeteer": "^24.28.0",
+    "server-destroy": "^1.0.1"
   }
 }
