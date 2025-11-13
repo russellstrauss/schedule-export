@@ -11,7 +11,7 @@ const CREDENTIALS_PATH = path.join(__dirname, 'credentials.json');
 async function listenForCode(oAuth2Client, authUrl) {
 	return new Promise((resolve, reject) => {
 		const server = http.createServer(async (req, res) => {
-			const url = new URL(req.url, 'http://localhost');
+			const url = new URL(req.url, 'http://localhost:3000');
 			const code = url.searchParams.get('code');
 			res.end('Authentication successful! You can close this tab.');
 			server.destroy();
