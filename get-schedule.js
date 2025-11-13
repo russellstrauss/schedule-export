@@ -52,7 +52,23 @@ const createVEVENT = (entry, index) => {
 		`STATUS:${status}`,
 		"END:VEVENT"
 	].join("\r\n");
-};
+}
+
+const toGoogleEvent = (entry) => {
+	const [month, day, year] = entry.date.split("/").map(Number);
+	const [hours, minutes] = entry.callTime.split(":").map(Number);
+	const start = new Date(year, month - 1, day, hours, minutes);
+	const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+	return {
+		summary: entry.show,
+		location: `${entry.venue} - ${entry.location}`,
+		description: `${entry.details} | ${entry.notes}`,
+		start: start.toISOString(),
+		end: end.toISOString(),
+		status: entry.status?.toLowerCase() || "confirmed"
+	}
+}
 
 async function getSchedule() {
 	const browser = await puppeteer.launch({ headless: true }); // set to false to see the browser
@@ -65,12 +81,12 @@ async function getSchedule() {
 	await page.type("#mypassword", process.env.RHINO_PASSWORD);
 	await page.click("#btnNewLogin");
 	
-	await page.waitForFunction(() => document.readyState === "complete", { timeout: 10000 }); // Wait for document ready
-	await page.waitForSelector("#btnSchedule", { visible: true, timeout: 10000 }); // Wait for #btnSchedule to appear	
+	await page.waitForFunction(() => document.readyState === "complete", { timeout: 5000 }); // Wait for document ready
+	await page.waitForSelector("#btnSchedule", { visible: true, timeout: 5000 }); // Wait for #btnSchedule to appear	
 	await page.click("#btnSchedule"); // load schedule table
 	await page.waitForSelector("table#dgResults");
 	
-	const data = await page.evaluate(() => {
+	const events = await page.evaluate(() => {
 		const table = document.querySelector("table#dgResults");
 		if (!table) return [];
 		
@@ -99,8 +115,11 @@ async function getSchedule() {
 		}).filter(Boolean); // remove nulls
 	});
 	
+	const googleEvents = events.map(toGoogleEvent);
+	await importEvents(googleEvents);
+	
 	// Download ICS file
-	const vevents = data.map((entry, i) => createVEVENT(entry, i)).join("\r\n");
+	const vevents = events.map((entry, i) => createVEVENT(entry, i)).join("\r\n");
 	const icsContent = [
 		"BEGIN:VCALENDAR",
 		"VERSION:2.0",
