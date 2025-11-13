@@ -46,4 +46,4 @@ async function authorize() {
 	return oAuth2Client;
 }
 
-module.exports = authorize;
+module.exports = { authorize };
