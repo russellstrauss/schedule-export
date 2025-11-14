@@ -5,6 +5,10 @@ const puppeteer = require("puppeteer");
 const { authorize } = require("./google-calendar/auth");
 const { addEvent, purgeRhinoEvents } = require("./google-calendar/add-event");
 
+const settings = {
+	generateICS: false
+};
+
 const pad = (num) => num.toString().padStart(2, "0");
 
 const formatICSDate = (dateObj) => {
@@ -147,9 +151,11 @@ async function getSchedule() {
 	const timeId = generateTimestamp();
 	const filename = `rhino-schedule-export-${timeId}.ics`;
 	const filepath = path.join(__dirname, filename);
-
-	fs.writeFileSync(filepath, icsContent, "utf8");
-	console.log(`Schedule exported to ${filename}`);
+	
+	if (settings.generateICS) {
+		fs.writeFileSync(filepath, icsContent, "utf8");
+		console.log(`Schedule exported to ${filename}`);
+	}
 
 	await browser.close();
 }
