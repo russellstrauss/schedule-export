@@ -32,8 +32,14 @@ if ($env:GOOGLE_TOKEN) {
     $yamlContent += "GOOGLE_TOKEN: `"$tokenEscaped`""
 }
 
-# Write YAML file
-$yamlContent -join "`n" | Out-File -FilePath $envVarsFile -Encoding utf8 -NoNewline
+# Write YAML file with proper format
+if ($yamlContent.Count -eq 0) {
+    Write-Host "Warning: No environment variables set. Function may not work correctly." -ForegroundColor Yellow
+    # Create empty YAML file
+    "" | Out-File -FilePath $envVarsFile -Encoding utf8
+} else {
+    $yamlContent -join "`n" | Out-File -FilePath $envVarsFile -Encoding utf8 -NoNewline
+}
 
 # Deploy the function with env vars file
 gcloud functions deploy $FunctionName `

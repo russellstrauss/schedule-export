@@ -4,7 +4,9 @@
     "type": "module",
     "main": "main.js",
     "scripts": {
-        "start": "functions-framework --target=syncSchedule"
+        "start": "functions-framework --target=syncSchedule",
+        "test": "vitest",
+        "test:run": "vitest run"
     },
     "dependencies": {
         "@google-cloud/functions-framework": "^4.0.0",
@@ -15,5 +17,8 @@
         "puppeteer": "^24.30.0",
         "puppeteer-core": "^24.30.0",
         "server-destroy": "^1.0.1"
+    },
+    "devDependencies": {
+        "vitest": "^4.0.10"
     }
 }
