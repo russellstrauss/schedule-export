@@ -1,6 +1,14 @@
 {
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "puppeteer": "^24.28.0"
-  }
+    "name": "cloud-sync",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "main.js",
+    "scripts": {
+        "start": "functions-framework --target=syncSchedule"
+    },
+    "dependencies": {
+        "@google-cloud/functions-framework": "^4.0.0",
+        "dotenv": "^17.2.3",
+        "puppeteer": "^24.30.0"
+    }
 }

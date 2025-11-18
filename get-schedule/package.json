@@ -1,0 +1,13 @@
+{
+  "name": "get-schedule",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "googleapis": "^166.0.0",
+    "open": "^10.2.0",
+    "puppeteer": "^24.28.0",
+    "server-destroy": "^1.0.1"
+  }
+}
