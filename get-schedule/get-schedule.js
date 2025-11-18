@@ -1,12 +1,93 @@
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import puppeteer from "puppeteer";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 
 import { authorize } from "./google-calendar/auth.js";
 import { addEvent, purgeRhinoEvents } from "./google-calendar/add-event.js";
+
+// Helper function to get Puppeteer instance (works in both local and Cloud Functions)
+async function getPuppeteer() {
+  // Check multiple indicators of Cloud Functions/serverless environment
+  // The error message shows /www-data-home/.cache/puppeteer, so check for that path
+  const isCloudFunction = !!(
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.FUNCTION_TARGET ||
+    process.env.K_SERVICE ||
+    process.env.FUNCTION_NAME ||
+    process.env.K_REVISION ||
+    // Check if we're in a typical serverless environment (www-data-home is the home dir in Cloud Functions)
+    (process.env.HOME && process.env.HOME.includes('www-data-home')) ||
+    (process.env.PWD && process.env.PWD.includes('www-data-home'))
+  );
+  
+  console.log(`Environment detection: isCloudFunction=${isCloudFunction}`);
+  console.log(`  GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
+  console.log(`  HOME: ${process.env.HOME}`);
+  console.log(`  PWD: ${process.env.PWD}`);
+  
+  // Always try @sparticuz/chromium first if we detect serverless, or if regular puppeteer fails
+  if (isCloudFunction) {
+    try {
+      console.log('Attempting to use @sparticuz/chromium for Cloud Functions...');
+      // In Cloud Functions, use puppeteer-core with @sparticuz/chromium
+      const chromiumModule = await import("@sparticuz/chromium");
+      const puppeteerCore = await import("puppeteer-core");
+      
+      // Handle both default export and named export
+      const chromium = chromiumModule.default || chromiumModule;
+      
+      // Set graphics mode for Cloud Functions (reduces memory usage)
+      if (chromium.setGraphicsMode) {
+        chromium.setGraphicsMode(false);
+      }
+      
+      // Get executable path (it's a function that returns a Promise)
+      const executablePath = chromium.executablePath 
+        ? await chromium.executablePath()
+        : null;
+      
+      if (!executablePath) {
+        throw new Error('Could not get executable path from @sparticuz/chromium');
+      }
+      
+      console.log(`Using @sparticuz/chromium with executable: ${executablePath}`);
+      
+      return {
+        launch: async (options = {}) => {
+          const launchOptions = {
+            args: chromium.args || [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage',
+              '--disable-accelerated-2d-canvas',
+              '--no-first-run',
+              '--no-zygote',
+              '--single-process',
+              '--disable-gpu'
+            ],
+            defaultViewport: chromium.defaultViewport || { width: 1280, height: 720 },
+            executablePath: executablePath,
+            headless: true,
+            ...options
+          };
+          
+          console.log('Launching browser with options:', JSON.stringify(launchOptions, null, 2));
+          return puppeteerCore.default.launch(launchOptions);
+        }
+      };
+    } catch (error) {
+      console.error('Error setting up @sparticuz/chromium:', error);
+      throw new Error(`Failed to initialize Puppeteer with @sparticuz/chromium: ${error.message}`);
+    }
+  } else {
+    // Local development - use regular puppeteer
+    console.log('Using regular puppeteer for local development');
+    const puppeteer = await import("puppeteer");
+    return puppeteer.default;
+  }
+}
 
 dotenv.config();
 
@@ -64,11 +145,24 @@ const createVEVENT = (entry, index) => {
   ].join("\r\n");
 };
 
+// Helper function to format date in America/New_York timezone
+// Since we specify timeZone in the event, we just need to format the date string
+// Google Calendar will interpret it correctly with the timezone
+const formatDateTimeForTimezone = (year, month, day, hours, minutes, timezone = "America/New_York") => {
+  // Format as YYYY-MM-DDTHH:mm:ss (without timezone, since we specify it separately)
+  // This represents the local time in the specified timezone
+  const dateStr = `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;
+  return dateStr;
+};
+
 const toGoogleEvent = (entry) => {
   const [month, day, year] = entry.date.split("/").map(Number);
   const [hours, minutes] = entry.callTime.split(":").map(Number);
-  const start = new Date(year, month - 1, day, hours, minutes);
-  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  
+  // Format dates as strings in the correct timezone format
+  // Google Calendar API will interpret these with the timeZone we specify
+  const startStr = formatDateTimeForTimezone(year, month, day, hours, minutes);
+  const endStr = formatDateTimeForTimezone(year, month, day, hours + 1, minutes);
 
   const rowId = [
     entry.date,
@@ -83,8 +177,8 @@ const toGoogleEvent = (entry) => {
     summary: entry.show,
     location: [entry.venue, entry.location].filter(Boolean).join(" - "),
     description: [entry.details, entry.notes].filter(Boolean).join(" | "),
-    start: start.toISOString(),
-    end: end.toISOString(),
+    start: startStr,
+    end: endStr,
     status: entry.status?.toLowerCase() || "confirmed",
     rowId
   };
@@ -98,6 +192,7 @@ export default async function getSchedule() {
     throw new Error("Missing RHINO_EMAIL or RHINO_PASSWORD in environment.");
   }
 
+  const puppeteer = await getPuppeteer();
   const browser = await puppeteer.launch({ headless: "new" });
   const page = await browser.newPage();
 
