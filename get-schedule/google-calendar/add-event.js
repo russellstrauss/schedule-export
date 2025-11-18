@@ -65,17 +65,22 @@ export async function syncEvent(auth, event) {
 			console.error("syncEvent: error during get:", err);
 			return { action: "error", error: err };
 		}
-		// Not found: insert with deterministic id (do NOT include id in body)
+		// Not found: insert with deterministic id in the request body
 		try {
+			// Include the custom event ID in the request body
+			const insertBody = { ...requestBody, id: eventId };
 			const res = await calendar.events.insert({
 				calendarId: "primary",
-				eventId,
-				requestBody
+				requestBody: insertBody
 			});
 			return { action: "created", event: res.data };
 		} catch (insertErr) {
 			// If insert fails due to id collision or invalid id, surface error
 			console.error("syncEvent: insert error:", insertErr);
+			// Log more details about the error for debugging
+			if (insertErr.response?.data?.error) {
+				console.error("Error details:", JSON.stringify(insertErr.response.data.error, null, 2));
+			}
 			return { action: "error", error: insertErr };
 		}
 	}
@@ -125,59 +130,6 @@ export async function purgeRhinoEvents(auth) {
 			} else {
 				console.error(`purgeRhinoEvents: delete failed for ${expectedId}`, err);
 				throw err;
-			}
-		}
-	}
-}
-
-/**
- * Deduplicate existing future events that share the same extendedProperties.private.rhinoRowId.
- * Keeps a single canonical event per key (prefer deterministic id match then latest updated).
- * @param {OAuth2Client} auth
- * @param {Object} options - { dryRun: boolean } - dryRun=true will only log actions
- */
-export async function dedupeRhino(auth, options = { dryRun: true }) {
-	const calendar = google.calendar({ version: "v3", auth });
-	const now = new Date().toISOString();
-	const res = await calendar.events.list({
-		calendarId: "primary",
-		timeMin: now,
-		singleEvents: true,
-		orderBy: "startTime",
-		maxResults: 2500
-	});
-
-	const items = res.data.items || [];
-	const groups = new Map();
-
-	for (const it of items) {
-		const key = it.extendedProperties?.private?.rhinoRowId;
-		if (!key) continue;
-		if (!groups.has(key)) groups.set(key, []);
-		groups.get(key).push(it);
-	}
-
-	for (const [key, list] of groups) {
-		if (list.length <= 1) continue;
-		const desiredId = deterministicIdFor(key);
-		// prefer event whose id matches deterministic id
-		let keeper = list.find(i => i.id === desiredId);
-		if (!keeper) {
-			// otherwise choose latest-updated event as keeper
-			keeper = list.slice().sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0))[0];
-		}
-		console.log(`dedupeRhino: key=${key} count=${list.length} keeper=${keeper.id}`);
-		for (const ev of list) {
-			if (ev.id === keeper.id) continue;
-			if (options.dryRun) {
-				console.log(`dedupeRhino (dry): would delete ${ev.id} for key ${key}`);
-				continue;
-			}
-			try {
-				await calendar.events.delete({ calendarId: "primary", eventId: ev.id });
-				console.log(`dedupeRhino: deleted ${ev.id} for key ${key}`);
-			} catch (err) {
-				console.error(`dedupeRhino: failed to delete ${ev.id}`, err);
 			}
 		}
 	}

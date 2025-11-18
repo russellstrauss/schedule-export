@@ -44,16 +44,10 @@ export async function authorize() {
 	
 	const isLocal = !isCloudFunction;
 	
-	console.log(`Auth environment detection: isCloudFunction=${isCloudFunction}, isLocal=${isLocal}`);
-	console.log(`  GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT}`);
-	console.log(`  HOME: ${process.env.HOME}`);
-	console.log(`  PWD: ${process.env.PWD}`);
-	
 	let client_id, client_secret, redirect_uri, tokens;
 
 	if (isLocal) {
 		// Local development: read from files
-		console.log('Reading credentials from local files...');
 		if (!fs.existsSync(CREDENTIALS_PATH)) {
 			throw new Error(`Credentials file not found at ${CREDENTIALS_PATH}`);
 		}
@@ -66,7 +60,6 @@ export async function authorize() {
 		}
 	} else {
 		// Cloud Functions: read from environment variables
-		console.log('Reading credentials from environment variables...');
 		client_id = process.env.GOOGLE_CLIENT_ID;
 		client_secret = process.env.GOOGLE_CLIENT_SECRET;
 		redirect_uri = process.env.GOOGLE_REDIRECT_URI;
