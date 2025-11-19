@@ -11,14 +11,14 @@ Write-Host "Deploying Test Function: $FunctionName" -ForegroundColor Cyan
 Write-Host "Project: $ProjectId" -ForegroundColor Cyan
 Write-Host "Region: $Region" -ForegroundColor Cyan
 
-# Temporary workaround: Change package.json main to test-main.js
+# Temporary workaround: Change package.json main to tests/test-main.js
 # This is needed because Functions Framework looks at package.json main first
 $packageJsonPath = Join-Path $PSScriptRoot "..\package.json"
 $packageJson = Get-Content $packageJsonPath | ConvertFrom-Json
 $originalMain = $packageJson.main
-$packageJson.main = "test-main.js"
+$packageJson.main = "tests/test-main.js"
 $packageJson | ConvertTo-Json -Depth 10 | Set-Content $packageJsonPath
-Write-Host "Temporarily changed package.json main to test-main.js for deployment" -ForegroundColor Gray
+Write-Host "Temporarily changed package.json main to tests/test-main.js for deployment" -ForegroundColor Gray
 
 # Load .env file if it exists
 $envFile = Join-Path $PSScriptRoot "..\.env"

@@ -5,12 +5,12 @@
     "main":  "main.js",
     "exports":  {
                     ".":  "./main.js",
-                    "./test":  "./test-function.js"
+                    "./test":  "./tests/test-function.js"
                 },
     "scripts":  {
                     "start":  "functions-framework --target=syncSchedule",
-                    "test":  "vitest",
-                    "test:run":  "vitest run",
+                    "test":  "vitest --config tests/vitest.config.js",
+                    "test:run":  "vitest run --config tests/vitest.config.js",
                     "test:integration":  "node tests/run-integration-tests.js"
                 },
     "dependencies":  {

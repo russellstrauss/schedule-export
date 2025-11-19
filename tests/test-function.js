@@ -1,4 +1,4 @@
-import { sendEmail, formatTestFailureEmail } from './tests/email-service.js';
+import { sendEmail, formatTestFailureEmail } from './email-service.js';
 import fetch from 'node-fetch';
 
 const FUNCTION_URL = process.env.FUNCTION_URL || 'https://sync-schedule-v2ndhgjy3q-uc.a.run.app';
