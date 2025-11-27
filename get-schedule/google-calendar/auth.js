@@ -13,15 +13,21 @@ const __dirname = dirname(__filename);
 const TOKEN_PATH = path.join(__dirname, "token.json");
 const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
 
-async function listenForCode(oAuth2Client, authUrl) {
+async function listenForCode(oAuth2Client, authUrl, redirectUri) {
 	return new Promise((resolve, reject) => {
+		// Parse the redirect URI to get port and host
+		const urlObj = new URL(redirectUri);
+		const port = urlObj.port || (urlObj.protocol === "https:" ? 443 : 80);
+		const host = urlObj.hostname || "localhost";
+		
 		const server = http.createServer(async (req, res) => {
-			const url = new URL(req.url, "http://localhost:3000");
+			const url = new URL(req.url, redirectUri);
 			const code = url.searchParams.get("code");
 			res.end("Authentication successful! You can close this tab.");
 			server.destroy();
 			resolve(code);
-		}).listen(3000, () => {
+		}).listen(port, host, () => {
+			console.log(`Listening for OAuth callback on ${redirectUri}`);
 			open(authUrl);
 		});
 		destroyer(server);
@@ -92,7 +98,7 @@ export async function authorize() {
 			scope: ["https://www.googleapis.com/auth/calendar"],
 		});
 		console.log("Authorize this app by visiting this URL:", authUrl);
-		const code = await listenForCode(oAuth2Client, authUrl);
+		const code = await listenForCode(oAuth2Client, authUrl, redirect_uri);
 		const { tokens: newTokens } = await oAuth2Client.getToken(code);
 		oAuth2Client.setCredentials(newTokens);
 		fs.writeFileSync(TOKEN_PATH, JSON.stringify(newTokens));

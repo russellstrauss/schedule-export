@@ -153,11 +153,53 @@ export default async function getSchedule() {
     console.log(`  ✅ ${event.summary}`);
   });
 
-  const auth = await authorize();
-  await purgeRhinoEvents(auth);
+  let auth = await authorize();
+  
+  // Helper function to handle token expiration
+  async function handleAuthError(error, retryFn) {
+    // Check if this is an invalid_grant error (expired token)
+    const isInvalidGrant = error?.response?.data?.error === 'invalid_grant' ||
+                          error?.message?.includes('invalid_grant') ||
+                          (error?.response?.status === 400 && error?.response?.data?.error_description?.includes('expired'));
+    
+    if (isInvalidGrant && !process.env.GOOGLE_CLOUD_PROJECT) {
+      // Only handle locally (not in Cloud Functions)
+      const fs = await import('fs');
+      const path = await import('path');
+      const { fileURLToPath } = await import('url');
+      
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const TOKEN_PATH = path.join(__dirname, "google-calendar", "token.json");
+      
+      console.log("⚠️  Token expired. Removing old token and re-authenticating...");
+      if (fs.existsSync(TOKEN_PATH)) {
+        fs.unlinkSync(TOKEN_PATH);
+      }
+      
+      // Re-authorize to get a new token
+      auth = await authorize();
+      
+      // Retry the operation
+      return await retryFn();
+    }
+    
+    // If not an invalid_grant error or in Cloud Functions, throw the error
+    throw error;
+  }
+  
+  try {
+    await purgeRhinoEvents(auth);
+  } catch (error) {
+    await handleAuthError(error, () => purgeRhinoEvents(auth));
+  }
 
   for (const event of googleEvents) {
-    await addEvent(auth, event);
+    try {
+      await addEvent(auth, event);
+    } catch (error) {
+      await handleAuthError(error, () => addEvent(auth, event));
+    }
   }
 
   await browser.close();
