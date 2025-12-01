@@ -1,6 +1,6 @@
 .env
 node_modules
 *.ics
-token.json
-credentials.json
+**/token.json
+**/credentials.json
 .cursorinclude
