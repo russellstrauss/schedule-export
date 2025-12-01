@@ -3,6 +3,9 @@
     "version":  "1.0.0",
     "type":  "module",
     "main":  "main.js",
+    "engines": {
+        "node": ">=25.0.0"
+    },
     "exports":  {
                     ".":  "./main.js",
                     "./test":  "./tests/test-function.js"
