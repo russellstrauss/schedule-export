@@ -95,15 +95,6 @@ export async function runTests(req, res) {
       console.error('❌ Unit tests failed:', error.message);
     }
 
-    // TEMPORARY: Intentional failure test - remove after viewing email
-    results.total++;
-    results.failed++;
-    results.failures.push({
-      name: 'EXAMPLE: Intentional failure to demonstrate email notifications',
-      error: 'This test always fails so you can see the email notification format. Remove this test after viewing the email.'
-    });
-    console.error('❌ EXAMPLE test failed (intentional)');
-
     // Test 1: Function responds successfully
     results.total++;
     try {
