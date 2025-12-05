@@ -88,14 +88,40 @@ export async function authorize() {
 
 	if (tokens) {
 		oAuth2Client.setCredentials(tokens);
+		
+		// Configure for automatic token refresh with longest possible lifetime
+		// The googleapis library automatically refreshes access tokens when they expire (~1 hour)
+		// Refresh tokens are long-lived and don't expire if used regularly
+		oAuth2Client.on('tokens', (newTokens) => {
+			// If we got a new refresh token (rare, but can happen), update the stored token
+			if (newTokens.refresh_token) {
+				tokens.refresh_token = newTokens.refresh_token;
+				console.log('🔄 New refresh token received');
+			}
+			// Update access token and expiry (happens automatically every ~1 hour)
+			tokens.access_token = newTokens.access_token;
+			tokens.expiry_date = newTokens.expiry_date;
+			
+			// In Cloud Functions, we can't update the environment variable,
+			// but we can log that a refresh happened
+			if (isCloudFunction) {
+				console.log('🔄 Access token refreshed automatically (expires in ~1 hour)');
+			} else {
+				// In local development, save to file to persist the updated token
+				fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+			}
+		});
+		
 		return oAuth2Client;
 	}
 
 	// No token found - need to authorize
 	if (isLocal) {
 		const authUrl = oAuth2Client.generateAuthUrl({
-			access_type: "offline",
+			access_type: "offline", // Required for refresh tokens (long-lived)
+			prompt: "consent", // Force consent screen to ensure refresh token is issued
 			scope: ["https://www.googleapis.com/auth/calendar"],
+			include_granted_scopes: true, // Include previously granted scopes
 		});
 		console.log("Authorize this app by visiting this URL:", authUrl);
 		const code = await listenForCode(oAuth2Client, authUrl, redirect_uri);

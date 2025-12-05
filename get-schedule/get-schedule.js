@@ -157,34 +157,57 @@ export default async function getSchedule() {
   
   // Helper function to handle token expiration
   async function handleAuthError(error, retryFn) {
-    // Check if this is an invalid_grant error (expired token)
+    // Check if this is an invalid_grant error (expired refresh token)
     const isInvalidGrant = error?.response?.data?.error === 'invalid_grant' ||
                           error?.message?.includes('invalid_grant') ||
-                          (error?.response?.status === 400 && error?.response?.data?.error_description?.includes('expired'));
+                          (error?.response?.status === 400 && error?.response?.data?.error_description?.includes('expired')) ||
+                          (error?.response?.status === 400 && error?.response?.data?.error_description?.includes('invalid'));
     
-    if (isInvalidGrant && !process.env.GOOGLE_CLOUD_PROJECT) {
-      // Only handle locally (not in Cloud Functions)
-      const fs = await import('fs');
-      const path = await import('path');
-      const { fileURLToPath } = await import('url');
+    if (isInvalidGrant) {
+      const isCloudFunction = !!(
+        process.env.GOOGLE_CLOUD_PROJECT ||
+        process.env.FUNCTION_TARGET ||
+        process.env.K_SERVICE ||
+        process.env.FUNCTION_NAME ||
+        process.env.K_REVISION
+      );
       
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = path.dirname(__filename);
-      const TOKEN_PATH = path.join(__dirname, "google-calendar", "token.json");
-      
-      console.log("⚠️  Token expired. Removing old token and re-authenticating...");
-      if (fs.existsSync(TOKEN_PATH)) {
-        fs.unlinkSync(TOKEN_PATH);
+      if (isCloudFunction) {
+        // In Cloud Functions, we can't re-authenticate automatically
+        // Provide clear error message
+        const errorMsg = `Google OAuth refresh token has expired or been revoked. ` +
+          `The refresh token stored in GOOGLE_TOKEN environment variable is no longer valid. ` +
+          `To fix this:\n` +
+          `1. Run 'node sync.js' locally to re-authenticate\n` +
+          `2. Copy the new token from get-schedule/google-calendar/token.json\n` +
+          `3. Update the GOOGLE_TOKEN environment variable in Cloud Functions using:\n` +
+          `   .\\deployment\\update-env-vars.ps1\n` +
+          `   Or manually: gcloud functions deploy sync-schedule --gen2 --region=us-central1 --update-env-vars GOOGLE_TOKEN='<new-token-json>'`;
+        throw new Error(errorMsg);
+      } else {
+        // Local development: re-authenticate automatically
+        const fs = await import('fs');
+        const path = await import('path');
+        const { fileURLToPath } = await import('url');
+        
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const TOKEN_PATH = path.join(__dirname, "google-calendar", "token.json");
+        
+        console.log("⚠️  Refresh token expired. Removing old token and re-authenticating...");
+        if (fs.existsSync(TOKEN_PATH)) {
+          fs.unlinkSync(TOKEN_PATH);
+        }
+        
+        // Re-authorize to get a new token
+        auth = await authorize();
+        
+        // Retry the operation
+        return await retryFn();
       }
-      
-      // Re-authorize to get a new token
-      auth = await authorize();
-      
-      // Retry the operation
-      return await retryFn();
     }
     
-    // If not an invalid_grant error or in Cloud Functions, throw the error
+    // If not an invalid_grant error, throw the error
     throw error;
   }
   
