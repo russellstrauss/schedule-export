@@ -155,15 +155,51 @@ export default async function getSchedule() {
 
   let auth = await authorize();
   
+  // Helper function to check if an error is due to expired/revoked refresh token
+  function isExpiredTokenError(error) {
+    // Check various error formats from Google OAuth API
+    const errorCode = error?.code;
+    const errorMessage = error?.message || '';
+    const responseError = error?.response?.data?.error;
+    const responseErrorDescription = error?.response?.data?.error_description || '';
+    const responseStatus = error?.response?.status;
+    
+    // Check for invalid_grant error (expired/revoked refresh token)
+    if (responseError === 'invalid_grant' || errorMessage.includes('invalid_grant')) {
+      return true;
+    }
+    
+    // Check for 400 status with expired/invalid descriptions
+    if (responseStatus === 400) {
+      const description = responseErrorDescription.toLowerCase();
+      if (description.includes('expired') || 
+          description.includes('invalid') ||
+          description.includes('revoked') ||
+          description.includes('token')) {
+        return true;
+      }
+    }
+    
+    // Check for specific error codes
+    if (errorCode === 401 || errorCode === 403) {
+      if (errorMessage.includes('token') && 
+          (errorMessage.includes('expired') || errorMessage.includes('invalid') || errorMessage.includes('revoked'))) {
+        return true;
+      }
+    }
+    
+    // Check for authentication errors that might indicate token issues
+    if (errorMessage.includes('Refresh token') && 
+        (errorMessage.includes('expired') || errorMessage.includes('revoked') || errorMessage.includes('invalid'))) {
+      return true;
+    }
+    
+    return false;
+  }
+  
   // Helper function to handle token expiration
   async function handleAuthError(error, retryFn) {
-    // Check if this is an invalid_grant error (expired refresh token)
-    const isInvalidGrant = error?.response?.data?.error === 'invalid_grant' ||
-                          error?.message?.includes('invalid_grant') ||
-                          (error?.response?.status === 400 && error?.response?.data?.error_description?.includes('expired')) ||
-                          (error?.response?.status === 400 && error?.response?.data?.error_description?.includes('invalid'));
-    
-    if (isInvalidGrant) {
+    if (isExpiredTokenError(error)) {
       const isCloudFunction = !!(
         process.env.GOOGLE_CLOUD_PROJECT ||
         process.env.FUNCTION_TARGET ||
@@ -194,20 +230,22 @@ export default async function getSchedule() {
         const __dirname = path.dirname(__filename);
         const TOKEN_PATH = path.join(__dirname, "google-calendar", "token.json");
         
-        console.log("⚠️  Refresh token expired. Removing old token and re-authenticating...");
+        console.log("⚠️  Refresh token expired or revoked. Removing old token and re-authenticating...");
         if (fs.existsSync(TOKEN_PATH)) {
           fs.unlinkSync(TOKEN_PATH);
         }
         
         // Re-authorize to get a new token
+        console.log("🔄 Starting OAuth flow to get new refresh token...");
         auth = await authorize();
+        console.log("✅ New token obtained. Retrying operation...");
         
         // Retry the operation
         return await retryFn();
       }
     }
     
-    // If not an invalid_grant error, throw the error
+    // If not an expired token error, throw the error
     throw error;
   }
   

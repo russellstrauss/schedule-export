@@ -108,8 +108,19 @@ export async function authorize() {
 				console.log('🔄 Access token refreshed automatically (expires in ~1 hour)');
 			} else {
 				// In local development, save to file to persist the updated token
-				fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
+				try {
+					fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+					console.log('💾 Token saved to file');
+				} catch (err) {
+					console.error('⚠️  Failed to save updated token:', err.message);
+				}
 			}
+		});
+		
+		// Add error handler for token refresh failures
+		oAuth2Client.on('error', (error) => {
+			console.error('❌ OAuth token error:', error.message);
+			// The error will be thrown when making API calls, so we just log it here
 		});
 		
 		return oAuth2Client;
