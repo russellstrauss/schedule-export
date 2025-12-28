@@ -57,6 +57,9 @@ export const isEventCancelled = (entry) => {
   // Also check if show name contains "CANCELLED" (case-insensitive)
   const showName = entry.show?.toLowerCase() || "";
   if (showName.includes("cancelled")) return true;
+  // Check if status contains "Called Out" (case-insensitive)
+  const status = entry.status?.toLowerCase() || "";
+  if (status.includes("called out")) return true;
   return false;
 };
 
