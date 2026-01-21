@@ -110,6 +110,33 @@ describe('isEventCancelled', () => {
     };
     expect(isEventCancelled(entry)).toBe(false);
   });
+
+  it('should return true for events with "Called Out" in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'Called Out',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "Turned Down - UNAVAILABLE" in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'Turned Down - UNAVAILABLE',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "turned down - unavailable" (lowercase) in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'turned down - unavailable',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
 });
 
 describe('toGoogleEvent', () => {

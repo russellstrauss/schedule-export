@@ -60,6 +60,8 @@ export const isEventCancelled = (entry) => {
   // Check if status contains "Called Out" (case-insensitive)
   const status = entry.status?.toLowerCase() || "";
   if (status.includes("called out")) return true;
+  // Check if status contains "Turned Down - UNAVAILABLE" (case-insensitive)
+  if (status.includes("turned down - unavailable")) return true;
   return false;
 };
 
