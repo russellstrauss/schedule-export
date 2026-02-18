@@ -2,11 +2,9 @@
 import crypto from "crypto";
 import { google } from "googleapis";
 
-/** Configuration */
 const DEFAULT_TIMEZONE = "America/New_York";
-const ID_LENGTH = 40; // truncate hex to this length (safe, < 1024 chars)
+const ID_LENGTH = 40;
 
-/** Build a stable, URL-safe id for a source row */
 function deterministicIdFor(rowId) {
 	if (rowId == null) rowId = "";
 	const hash = crypto.createHash("sha256").update(String(rowId)).digest("hex").slice(0, ID_LENGTH);
@@ -37,8 +35,6 @@ function normalizeEventBody(event) {
 }
 
 /**
- * Sync a single event: update if exists by deterministic id, otherwise insert with that id.
- * Returns { action: "created"|"updated"|"skipped"|"error", event }
  * @param {OAuth2Client} auth
  * @param {Object} event - { summary, location, description, start, end, status, rowId }
  */
@@ -48,9 +44,7 @@ export async function syncEvent(auth, event) {
 	const requestBody = normalizeEventBody(event);
 
 	try {
-		// Try GET by deterministic id
 		await calendar.events.get({ calendarId: "primary", eventId });
-		// If found, update
 		const res = await calendar.events.update({
 			calendarId: "primary",
 			eventId,
@@ -61,13 +55,10 @@ export async function syncEvent(auth, event) {
 	} catch (err) {
 		const notFound = err?.code === 404 || (err?.response?.status === 404);
 		if (!notFound) {
-			// Unexpected error — surface it but avoid creating a duplicate when uncertain
 			console.error("syncEvent: error during get:", err);
 			return { action: "error", error: err };
 		}
-		// Not found: insert with deterministic id in the request body
 		try {
-			// Include the custom event ID in the request body
 			const insertBody = { ...requestBody, id: eventId };
 			const res = await calendar.events.insert({
 				calendarId: "primary",
@@ -75,9 +66,7 @@ export async function syncEvent(auth, event) {
 			});
 			return { action: "created", event: res.data };
 		} catch (insertErr) {
-			// If insert fails due to id collision or invalid id, surface error
 			console.error("syncEvent: insert error:", insertErr);
-			// Log more details about the error for debugging
 			if (insertErr.response?.data?.error) {
 				console.error("Error details:", JSON.stringify(insertErr.response.data.error, null, 2));
 			}

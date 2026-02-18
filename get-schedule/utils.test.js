@@ -296,6 +296,47 @@ describe('toGoogleEvent', () => {
     const result = toGoogleEvent(entry);
     expect(result.description).toBe('Some details | Some notes');
   });
+
+  it('should include venue link in description when entry.venueLink is set', () => {
+    const entry = {
+      date: '11/23/2025',
+      callTime: '08:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: 'Some details',
+      notes: 'Some notes',
+      venueLink: 'https://example.com/venue-doc.pdf'
+    };
+
+    const result = toGoogleEvent(entry);
+    expect(result.description).toBe('Some details | Some notes\n\nVenue: https://example.com/venue-doc.pdf');
+  });
+
+  it('should have description unchanged when venueLink is missing or empty', () => {
+    const entryWithDetails = {
+      date: '11/23/2025',
+      callTime: '08:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: 'Some details',
+      notes: 'Some notes'
+    };
+    expect(toGoogleEvent(entryWithDetails).description).toBe('Some details | Some notes');
+
+    const entryWithEmptyVenueLink = { ...entryWithDetails, venueLink: '' };
+    expect(toGoogleEvent(entryWithEmptyVenueLink).description).toBe('Some details | Some notes');
+
+    const entryWithWhitespaceVenueLink = { ...entryWithDetails, venueLink: '   ' };
+    expect(toGoogleEvent(entryWithWhitespaceVenueLink).description).toBe('Some details | Some notes');
+  });
 });
 
 describe('formatDateTimeForTimezone', () => {
