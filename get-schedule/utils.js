@@ -49,6 +49,20 @@ export const normalizeStatus = (status) => {
 };
 
 /**
+ * Normalize status (and similar) text for substring checks: Unicode dashes,
+ * NBSP, and collapsed whitespace so UI variants still match.
+ */
+export const normalizeTextForMatch = (value) => {
+	if (!value) return "";
+	return value
+		.toLowerCase()
+		.replace(/\u00a0/g, " ")
+		.replace(/[\u2013\u2014\u2212]/g, "-")
+		.replace(/\s+/g, " ")
+		.trim();
+};
+
+/**
  * Check if an event entry should be filtered out (cancelled)
  */
 export const isEventCancelled = (entry) => {
@@ -57,11 +71,12 @@ export const isEventCancelled = (entry) => {
 	// Also check if show name contains "CANCELLED" (case-insensitive)
 	const showName = entry.show?.toLowerCase() || "";
 	if (showName.includes("cancelled")) return true;
-	// Check if status contains "Called Out" (case-insensitive)
-	const status = entry.status?.toLowerCase() || "";
+	const status = normalizeTextForMatch(entry.status);
 	if (status.includes("called out")) return true;
-	// Check if status contains "Turned Down - UNAVAILABLE" (case-insensitive)
-	if (status.includes("turned down - unavailable")) return true;
+	// Rhino may use hyphen, en dash, em dash, odd spacing, or no spaces (e.g. "TurnedDown–UNAVAILABLE")
+	if (status.includes("turned down") && status.includes("unavailable")) return true;
+	const lettersOnly = status.replace(/[^a-z]/g, "");
+	if (lettersOnly.includes("turneddown") && lettersOnly.includes("unavailable")) return true;
 	return false;
 };
 

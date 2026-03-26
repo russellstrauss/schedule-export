@@ -107,6 +107,7 @@ export default async function getSchedule() {
 
 		// Find Venue Link column: header is <td class="leftcell">+</td>
 		let venueLinkColumnIndex = -1;
+		let statusColumnIndex = 10;
 		if (headerRow) {
 			const headerCells = Array.from(headerRow.querySelectorAll("td"));
 			for (let i = 0; i < headerCells.length; i++) {
@@ -114,7 +115,10 @@ export default async function getSchedule() {
 				const hasLeftcell = cell.classList && cell.classList.contains("leftcell");
 				if (hasLeftcell && cell.textContent.trim() === "+") {
 					venueLinkColumnIndex = i;
-					break;
+				}
+				const headerText = cell.textContent.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+				if (headerText === "status" || headerText.startsWith("status ")) {
+					statusColumnIndex = i;
 				}
 			}
 		}
@@ -138,6 +142,7 @@ export default async function getSchedule() {
 				venueLink = (href && href.trim()) ? href.trim() : undefined;
 			}
 
+			const statusCell = cells[statusColumnIndex];
 			const entry = {
 				date: cells[0].textContent.trim(),
 				callTime: cells[1].textContent.trim(),
@@ -148,7 +153,7 @@ export default async function getSchedule() {
 				type: cells[7].textContent.trim(),
 				position: cells[8].textContent.trim(),
 				details: cells[9].textContent.trim(),
-				status: cells[10].textContent.trim(),
+				status: statusCell ? statusCell.textContent.trim() : "",
 				notes: cells[11].textContent.trim(),
 				isCallCancelled: isCallCancelled
 			};

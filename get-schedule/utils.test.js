@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatTimeForTitle,
   normalizeStatus,
+  normalizeTextForMatch,
   isEventCancelled,
   toGoogleEvent,
   formatDateTimeForTimezone,
@@ -136,6 +137,41 @@ describe('isEventCancelled', () => {
       isCallCancelled: false
     };
     expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should treat en-dash and odd spacing as Turned Down UNAVAILABLE', () => {
+    expect(
+      isEventCancelled({
+        show: 'X',
+        status: 'Turned Down \u2013 UNAVAILABLE',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+    expect(
+      isEventCancelled({
+        show: 'X',
+        status: 'Turned  Down  -  UNAVAILABLE',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+  });
+
+  it('should match concatenated TurnedDown–UNAVAILABLE (no spaces)', () => {
+    expect(
+      isEventCancelled({
+        show: 'X',
+        status: 'TurnedDown\u2013UNAVAILABLE',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+  });
+});
+
+describe('normalizeTextForMatch', () => {
+  it('normalizes NBSP, en dash, and whitespace', () => {
+    expect(normalizeTextForMatch('Turned Down \u00a0\u2013 UNAVAILABLE')).toBe(
+      'turned down - unavailable'
+    );
   });
 });
 
