@@ -14,6 +14,7 @@
  * @property {string} [details]
  * @property {string} [notes]
  * @property {boolean} [isCallCancelled]
+ * @property {string} [venueLink]
  */
 
 export const DEFAULT_TIMEZONE = "America/New_York";

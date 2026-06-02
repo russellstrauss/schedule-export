@@ -45,7 +45,31 @@ export async function fetchSchedule(page) {
     const normalizeCellText = (text) =>
       text.replace(/\\t/g, "").replace(/\\n/g, "\n").replace(/\s+/g, " ").trim().toLowerCase();
 
-    const bodyRows = Array.from(table.querySelectorAll("tbody tr")).slice(1, -1);
+    const allRows = Array.from(table.querySelectorAll("tbody tr"));
+    const headerRow = allRows[0];
+    const bodyRows = allRows.slice(1, -1);
+
+    let venueLinkColumnIndex = -1;
+    let statusColumnIndex = 10;
+    if (headerRow) {
+      const headerCells = Array.from(headerRow.querySelectorAll("td"));
+      for (let i = 0; i < headerCells.length; i++) {
+        const cell = headerCells[i];
+        const hasLeftcell = cell.classList && cell.classList.contains("leftcell");
+        if (hasLeftcell && cell.textContent.trim() === "+") {
+          venueLinkColumnIndex = i;
+        }
+        const headerText = cell.textContent
+          .replace(/\u00a0/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+        if (headerText === "status" || headerText.startsWith("status ")) {
+          statusColumnIndex = i;
+        }
+      }
+    }
+
     return bodyRows.map((row) => {
       const cells = Array.from(row.querySelectorAll("td"));
       if (cells.length < 12) return null;
@@ -57,7 +81,15 @@ export async function fetchSchedule(page) {
         (cell) => normalizeCellText(cell.textContent) === callCancelledLabel
       );
 
-      return {
+      let venueLink;
+      if (venueLinkColumnIndex >= 0 && cells[venueLinkColumnIndex]) {
+        const anchor = cells[venueLinkColumnIndex].querySelector("a");
+        const href = anchor ? anchor.href : null;
+        venueLink = href && href.trim() ? href.trim() : undefined;
+      }
+
+      const statusCell = cells[statusColumnIndex];
+      const entry = {
         date: cells[0].textContent.trim(),
         callTime: cells[1].textContent.trim(),
         show: cells[3].textContent.trim(),
@@ -67,10 +99,12 @@ export async function fetchSchedule(page) {
         type: cells[7].textContent.trim(),
         position: cells[8].textContent.trim(),
         details: cells[9].textContent.trim(),
-        status: cells[10].textContent.trim(),
+        status: statusCell ? statusCell.textContent.trim() : "",
         notes: cells[11].textContent.trim(),
         isCallCancelled
       };
+      if (venueLink) entry.venueLink = venueLink;
+      return entry;
     }).filter(Boolean);
   }, CALL_CANCELLED_LABEL.toLowerCase());
 

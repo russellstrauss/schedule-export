@@ -3,6 +3,7 @@ import {
   formatTimeForTitle,
   normalizeStatus,
   isCallCancelledLabel,
+  normalizeTextForMatch,
   isEventCancelled,
   toGoogleEvent,
   formatDateTimeForTimezone,
@@ -133,6 +134,68 @@ describe('isEventCancelled', () => {
       isCallCancelled: false
     };
     expect(isEventCancelled(entry)).toBe(false);
+  });
+
+  it('should return true for events with "Called Out" in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'Called Out',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "Turned Down - UNAVAILABLE" in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'Turned Down - UNAVAILABLE',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "turned down - unavailable" (lowercase) in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'turned down - unavailable',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should treat en-dash and odd spacing as Turned Down UNAVAILABLE', () => {
+    expect(
+      isEventCancelled({
+        show: 'X',
+        status: 'Turned Down \u2013 UNAVAILABLE',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+    expect(
+      isEventCancelled({
+        show: 'X',
+        status: 'Turned  Down  -  UNAVAILABLE',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+  });
+
+  it('should match concatenated TurnedDown–UNAVAILABLE (no spaces)', () => {
+    expect(
+      isEventCancelled({
+        show: 'X',
+        status: 'TurnedDown\u2013UNAVAILABLE',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+  });
+});
+
+describe('normalizeTextForMatch', () => {
+  it('normalizes NBSP, en dash, and whitespace', () => {
+    expect(normalizeTextForMatch('Turned Down \u00a0\u2013 UNAVAILABLE')).toBe(
+      'turned down - unavailable'
+    );
   });
 });
 
@@ -312,6 +375,47 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry);
     expect(result.description).toBe('Some details | Some notes');
+  });
+
+  it('should include venue link in description when entry.venueLink is set', () => {
+    const entry = {
+      date: '11/23/2025',
+      callTime: '08:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: 'Some details',
+      notes: 'Some notes',
+      venueLink: 'https://example.com/venue-doc.pdf'
+    };
+
+    const result = toGoogleEvent(entry);
+    expect(result.description).toBe('Some details | Some notes\n\nVenue: https://example.com/venue-doc.pdf');
+  });
+
+  it('should have description unchanged when venueLink is missing or empty', () => {
+    const entryWithDetails = {
+      date: '11/23/2025',
+      callTime: '08:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: 'Some details',
+      notes: 'Some notes'
+    };
+    expect(toGoogleEvent(entryWithDetails).description).toBe('Some details | Some notes');
+
+    const entryWithEmptyVenueLink = { ...entryWithDetails, venueLink: '' };
+    expect(toGoogleEvent(entryWithEmptyVenueLink).description).toBe('Some details | Some notes');
+
+    const entryWithWhitespaceVenueLink = { ...entryWithDetails, venueLink: '   ' };
+    expect(toGoogleEvent(entryWithWhitespaceVenueLink).description).toBe('Some details | Some notes');
   });
 });
 

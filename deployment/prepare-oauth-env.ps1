@@ -2,22 +2,22 @@
 # Run this before deploying to extract credentials and token
 
 param(
-    [string]$CredentialsPath = "get-schedule\google-calendar\credentials.json",
-    [string]$TokenPath = "get-schedule\google-calendar\token.json"
+	[string]$CredentialsPath = "get-schedule\google-calendar\credentials.json",
+	[string]$TokenPath = "get-schedule\google-calendar\token.json"
 )
 
 Write-Host "Preparing Google OAuth environment variables..." -ForegroundColor Cyan
 
 # Check if files exist
 if (-not (Test-Path $CredentialsPath)) {
-    Write-Host "Error: credentials.json not found at $CredentialsPath" -ForegroundColor Red
-    exit 1
+	Write-Host "Error: credentials.json not found at $CredentialsPath" -ForegroundColor Red
+	exit 1
 }
 
 if (-not (Test-Path $TokenPath)) {
-    Write-Host "Warning: token.json not found at $TokenPath" -ForegroundColor Yellow
-    Write-Host "   Run 'node sync.js' locally first to generate token.json" -ForegroundColor Yellow
-    exit 1
+	Write-Host "Warning: token.json not found at $TokenPath" -ForegroundColor Yellow
+	Write-Host "   Run 'node sync.js' locally first to generate token.json" -ForegroundColor Yellow
+	exit 1
 }
 
 # Read and parse credentials.json
