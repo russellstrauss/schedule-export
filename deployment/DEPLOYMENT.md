@@ -86,6 +86,32 @@ export RHINO_PASSWORD="your-password"
 
 **Note**: If you ran `deployment\prepare-oauth-env.ps1` or `deployment/prepare-oauth-env.sh` in Step 3, the Google OAuth variables are already set. Make sure both Rhino and Google OAuth variables are set before deploying.
 
+## Step 4b: Crew One portal
+
+To sync the Crew One contractor portal into the **same** Google Calendar, set credentials and enable the source:
+
+**Windows (PowerShell):**
+```powershell
+$env:CREWONE_LOGIN_URL = "https://portal.crew1.com/"
+$env:CREWONE_EMAIL = "your-email@example.com"
+$env:CREWONE_PASSWORD = "your-password"
+$env:SCHEDULE_SOURCES = "rhino,crewOne"
+```
+
+**Linux/Mac:**
+```bash
+export CREWONE_LOGIN_URL="https://portal.crew1.com/"
+export CREWONE_EMAIL="your-email@example.com"
+export CREWONE_PASSWORD="your-password"
+export SCHEDULE_SOURCES="rhino,crewOne"
+```
+
+- `SCHEDULE_SOURCES` defaults to `rhino` if unset (safe rollout).
+- Sources without credentials are skipped with a warning.
+- If both portals are enabled, the function logs in to each sequentially (may need a longer timeout; deploy scripts use 600s when multiple sources are typical).
+
+Copy [.env.example](../.env.example) to `.env` for local runs with `node sync.js`.
+
 ## Step 5: Deploy the Cloud Function
 
 **Windows (PowerShell):**

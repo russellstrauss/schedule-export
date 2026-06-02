@@ -1,10 +1,7 @@
-# Script to check and renew Google OAuth token, then update Cloud Function
-# This script will:
-# 1. Check if local token.json exists and is expired
-# 2. Check if Cloud Function token is expired
-# 3. Automatically renew if expired (or if --Force flag is used)
-# 4. Prepare OAuth environment variables
-# 5. Update the Cloud Function with the new token
+# Script to sync Google OAuth credentials with Cloud Functions.
+# - Browser OAuth runs only when local token.json is missing or has no refresh_token.
+# - If local is OK but cloud GOOGLE_TOKEN differs / is missing, updates cloud env from token.json.
+# - Optional --Force runs full re-auth (same as missing refresh_token).
 
 param(
     [string]$Region = "us-central1",
@@ -21,107 +18,95 @@ Write-Host ""
 $tokenPath = "get-schedule\google-calendar\token.json"
 $credentialsPath = "get-schedule\google-calendar\credentials.json"
 $needsRenewal = $false
+$needsCloudEnvSync = $false
 $reason = ""
 
-# Function to check if token is expired
-function Test-TokenExpired {
+# Local OAuth file is usable if it parses and has a refresh_token.
+# Stale access-token expiry_date is normal; google-auth refreshes on use.
+function Test-LocalCredentialNeedsBrowserOAuth {
     param([string]$TokenPath)
     
     if (-not (Test-Path $TokenPath)) {
-        return @{Expired = $true; Reason = "Token file does not exist"}
+        return @{NeedsOAuth = $true; Reason = "Token file does not exist"}
     }
     
     try {
         $tokenContent = Get-Content $TokenPath -Raw | ConvertFrom-Json
-        $expiryDate = $tokenContent.expiry_date
-        
-        if (-not $expiryDate) {
-            return @{Expired = $true; Reason = "Token missing expiry_date"}
-        }
-        
-        # Convert Unix timestamp (milliseconds) to DateTime
-        $expiryDateTime = [DateTimeOffset]::FromUnixTimeMilliseconds($expiryDate).DateTime
-        $now = Get-Date
-        
-        # Check if expired (with 1 hour buffer for safety)
-        $buffer = New-TimeSpan -Hours 1
-        if ($expiryDateTime -lt $now.Add($buffer)) {
-            return @{Expired = $true; Reason = "Token expired on $expiryDateTime (current time: $now)"}
-        }
-        
-        # Check if refresh_token exists
         if (-not $tokenContent.refresh_token) {
-            return @{Expired = $true; Reason = "Token missing refresh_token"}
+            return @{NeedsOAuth = $true; Reason = "Token missing refresh_token"}
         }
-        
-        return @{Expired = $false; Reason = "Token is valid until $expiryDateTime"}
+        return @{NeedsOAuth = $false; Reason = "Local credential has refresh_token"}
     } catch {
-        return @{Expired = $true; Reason = "Error reading token: $_"}
+        return @{NeedsOAuth = $true; Reason = "Error reading token: $_"}
     }
 }
 
-# Function to check Cloud Function token
-function Test-CloudFunctionTokenExpired {
-    param([string]$Region, [string]$FunctionName)
+function Get-LocalRefreshToken {
+    param([string]$TokenPath)
+    if (-not (Test-Path $TokenPath)) { return $null }
+    try {
+        $tokenContent = Get-Content $TokenPath -Raw | ConvertFrom-Json
+        return [string]$tokenContent.refresh_token
+    } catch {
+        return $null
+    }
+}
+
+# True if cloud GOOGLE_TOKEN is missing, invalid, or does not match local refresh_token.
+# Do not use access-token expiry_date - stored env vars often look "expired" between runs.
+function Test-CloudNeedsTokenEnvSync {
+    param([string]$Region, [string]$FunctionName, [string]$LocalRefreshToken)
     
     try {
         $functionJson = gcloud functions describe $FunctionName --gen2 --region=$Region --format="json(serviceConfig.environmentVariables)" 2>&1
         if ($LASTEXITCODE -ne 0) {
-            return @{Expired = $true; Reason = "Could not fetch Cloud Function environment variables"}
+            return @{NeedsSync = $true; Reason = "Could not fetch Cloud Function environment variables"}
         }
         
         $functionObj = $functionJson | ConvertFrom-Json
         $envVars = $functionObj.serviceConfig.environmentVariables
         
         if (-not $envVars -or -not $envVars.GOOGLE_TOKEN) {
-            return @{Expired = $true; Reason = "Cloud Function missing GOOGLE_TOKEN"}
+            return @{NeedsSync = $true; Reason = "Cloud Function missing GOOGLE_TOKEN"}
         }
         
         $tokenJson = $envVars.GOOGLE_TOKEN | ConvertFrom-Json
-        $expiryDate = $tokenJson.expiry_date
-        
-        if (-not $expiryDate) {
-            return @{Expired = $true; Reason = "Cloud Function token missing expiry_date"}
-        }
-        
-        $expiryDateTime = [DateTimeOffset]::FromUnixTimeMilliseconds($expiryDate).DateTime
-        $now = Get-Date
-        
-        $buffer = New-TimeSpan -Hours 1
-        if ($expiryDateTime -lt $now.Add($buffer)) {
-            return @{Expired = $true; Reason = "Cloud Function token expired on $expiryDateTime"}
-        }
-        
         if (-not $tokenJson.refresh_token) {
-            return @{Expired = $true; Reason = "Cloud Function token missing refresh_token"}
+            return @{NeedsSync = $true; Reason = "Cloud Function token missing refresh_token"}
         }
         
-        return @{Expired = $false; Reason = "Cloud Function token is valid until $expiryDateTime"}
+        if ($LocalRefreshToken -and [string]$tokenJson.refresh_token -ne $LocalRefreshToken) {
+            return @{NeedsSync = $true; Reason = "Cloud refresh_token differs from local token.json"}
+        }
+        
+        return @{NeedsSync = $false; Reason = "Cloud GOOGLE_TOKEN matches local refresh credential"}
     } catch {
-        return @{Expired = $true; Reason = "Error checking Cloud Function token: $_"}
+        return @{NeedsSync = $true; Reason = "Error checking Cloud Function token: $_"}
     }
 }
 
-# Check local token
+# Check local credential (browser OAuth only if refresh_token missing / file bad)
 Write-Host "Checking local token..." -ForegroundColor Yellow
-$localResult = Test-TokenExpired -TokenPath $tokenPath
-if ($localResult.Expired) {
-    Write-Host "  Local token: EXPIRED or INVALID - $($localResult.Reason)" -ForegroundColor Red
+$localResult = Test-LocalCredentialNeedsBrowserOAuth -TokenPath $tokenPath
+if ($localResult.NeedsOAuth) {
+    Write-Host "  Local token: NEEDS BROWSER OAUTH - $($localResult.Reason)" -ForegroundColor Red
     $needsRenewal = $true
 } else {
-    Write-Host "  Local token: VALID - $($localResult.Reason)" -ForegroundColor Green
+    Write-Host "  Local token: OK - $($localResult.Reason)" -ForegroundColor Green
 }
 
 Write-Host ""
 
-# Check Cloud Function token
-Write-Host "Checking Cloud Function token..." -ForegroundColor Yellow
-$cloudResult = Test-CloudFunctionTokenExpired -Region $Region -FunctionName $FunctionName
-if ($cloudResult.Expired) {
-    Write-Host "  Cloud Function token: EXPIRED or INVALID - $($cloudResult.Reason)" -ForegroundColor Red
-    $needsRenewal = $true
+$localRefresh = Get-LocalRefreshToken -TokenPath $tokenPath
+
+# Check whether Cloud env needs the same credential as local token.json
+Write-Host "Checking Cloud Function GOOGLE_TOKEN..." -ForegroundColor Yellow
+$cloudResult = Test-CloudNeedsTokenEnvSync -Region $Region -FunctionName $FunctionName -LocalRefreshToken $localRefresh
+if ($cloudResult.NeedsSync) {
+    Write-Host "  Cloud: NEEDS ENV UPDATE - $($cloudResult.Reason)" -ForegroundColor Yellow
+    $needsCloudEnvSync = $true
 } else {
-    Write-Host "  Cloud Function token: VALID - $($cloudResult.Reason)" -ForegroundColor Green
+    Write-Host "  Cloud: OK - $($cloudResult.Reason)" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -132,15 +117,37 @@ if ($Force) {
     $needsRenewal = $true
 }
 
+if (-not $needsRenewal -and $needsCloudEnvSync) {
+    Write-Host "Local credential is fine; pushing token.json to Cloud Function env (no browser OAuth)." -ForegroundColor Cyan
+    Write-Host ""
+    if ($SkipUpdate) {
+        Write-Host "SkipUpdate is set - deployment will supply GOOGLE_TOKEN from prepare-oauth-env.ps1." -ForegroundColor Gray
+        exit 0
+    }
+    & .\deployment\prepare-oauth-env.ps1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to prepare OAuth environment variables" -ForegroundColor Yellow
+        exit 1
+    }
+    & .\deployment\update-env-vars.ps1 -Region $Region -FunctionName $FunctionName
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to update Cloud Function env vars" -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Host ""
+    Write-Host "Cloud GOOGLE_TOKEN updated from local token.json." -ForegroundColor Green
+    exit 0
+}
+
 if (-not $needsRenewal) {
     Write-Host "All tokens are valid. No renewal needed." -ForegroundColor Green
     if ($SkipUpdate) {
         exit 0
     }
     
-    # Even if tokens are valid, update env vars to ensure they're in sync
+    # Even if tokens are valid, refresh shell env from files for any follow-up scripts
     Write-Host ""
-    Write-Host "Updating environment variables to ensure sync..." -ForegroundColor Yellow
+    Write-Host "Refreshing OAuth env vars from disk..." -ForegroundColor Yellow
     & .\deployment\prepare-oauth-env.ps1
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Warning: Failed to prepare OAuth environment variables" -ForegroundColor Yellow
@@ -192,22 +199,22 @@ if (-not (Test-Path $tokenPath)) {
     exit 1
 }
 
-# Verify new token is valid
+# Verify new token has refresh_token
 Write-Host ""
 Write-Host "Verifying new token..." -ForegroundColor Yellow
-$newTokenResult = Test-TokenExpired -TokenPath $tokenPath
-if ($newTokenResult.Expired) {
+$newTokenResult = Test-LocalCredentialNeedsBrowserOAuth -TokenPath $tokenPath
+if ($newTokenResult.NeedsOAuth) {
     Write-Host "Error: New token is invalid - $($newTokenResult.Reason)" -ForegroundColor Red
     exit 1
 }
-Write-Host "New token is valid - $($newTokenResult.Reason)" -ForegroundColor Green
+Write-Host "New token is OK - $($newTokenResult.Reason)" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Token saved to: $tokenPath" -ForegroundColor Green
 
 if ($SkipUpdate) {
     Write-Host ""
-    Write-Host "Skipping Cloud Function update (--SkipUpdate flag set)" -ForegroundColor Yellow
+    Write-Host 'Skipping Cloud Function env update (SkipUpdate is set).' -ForegroundColor Yellow
     Write-Host "   To update manually, run:" -ForegroundColor Gray
     Write-Host "   .\deployment\prepare-oauth-env.ps1" -ForegroundColor Gray
     Write-Host "   .\deployment\update-env-vars.ps1 -Region $Region -FunctionName $FunctionName" -ForegroundColor Gray

@@ -48,25 +48,99 @@ export const normalizeStatus = (status) => {
   return "confirmed";
 };
 
+/** Exact text Rhino puts in the blank-header column (between TK/TL/SAF and "+"). */
+export const CALL_CANCELLED_LABEL = "Call Cancelled";
+
+/**
+ * True when cell text is Rhino's call-cancelled marker (blank header column).
+ */
+export const isCallCancelledLabel = (text) => {
+  if (!text) return false;
+  const normalized = text.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized === CALL_CANCELLED_LABEL.toLowerCase();
+};
+
 /**
  * Check if an event entry should be filtered out (cancelled)
  */
 export const isEventCancelled = (entry) => {
-  // Check if "Call Cancelled" is in the designated cell
   if (entry.isCallCancelled) return true;
-  // Also check if show name contains "CANCELLED" (case-insensitive)
   const showName = entry.show?.toLowerCase() || "";
-  if (showName.includes("cancelled")) return true;
-  // Check if status contains "Called Out" (case-insensitive)
+  if (showName.includes("cancelled") || showName.includes("canceled")) return true;
   const status = entry.status?.toLowerCase() || "";
   if (status.includes("called out")) return true;
   return false;
 };
 
 /**
- * Transform a schedule entry to a Google Calendar event
+ * Check if an event date/time is in the future, accounting for timezone
+ * This properly handles America/New_York timezone to avoid timezone bugs
+ * @param {number} year - Year (e.g., 2025)
+ * @param {number} month - Month (1-12)
+ * @param {number} day - Day (1-31)
+ * @param {number} hours - Hours (0-23)
+ * @param {number} minutes - Minutes (0-59)
+ * @param {string} timezone - Timezone (default: "America/New_York")
+ * @returns {boolean} True if the event is in the future
  */
-export const toGoogleEvent = (entry) => {
+export const isEventInFuture = (year, month, day, hours, minutes, timezone = "America/New_York") => {
+  // Get current time components in the target timezone
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  
+  const nowParts = formatter.formatToParts(new Date());
+  const nowObj = {};
+  nowParts.forEach(part => {
+    if (part.type !== "literal") {
+      nowObj[part.type] = part.value;
+    }
+  });
+  
+  // Compare year, month, day, hour, minute
+  const eventTime = {
+    year: year,
+    month: month,
+    day: day,
+    hour: hours,
+    minute: minutes
+  };
+  
+  const nowTime = {
+    year: parseInt(nowObj.year),
+    month: parseInt(nowObj.month),
+    day: parseInt(nowObj.day),
+    hour: parseInt(nowObj.hour),
+    minute: parseInt(nowObj.minute)
+  };
+  
+  // Compare chronologically
+  if (eventTime.year > nowTime.year) return true;
+  if (eventTime.year < nowTime.year) return false;
+  if (eventTime.month > nowTime.month) return true;
+  if (eventTime.month < nowTime.month) return false;
+  if (eventTime.day > nowTime.day) return true;
+  if (eventTime.day < nowTime.day) return false;
+  if (eventTime.hour > nowTime.hour) return true;
+  if (eventTime.hour < nowTime.hour) return false;
+  if (eventTime.minute > nowTime.minute) return true;
+  return false; // Same or past
+};
+
+/**
+ * Transform a schedule entry to a Google Calendar event
+ * @param {Object} entry
+ * @param {{ source?: string }} [options]
+ */
+export const toGoogleEvent = (entry, options = {}) => {
+  const source = options.source || entry.source || "rhino";
   const [month, day, year] = entry.date.split("/").map(Number);
   const [hours, minutes] = entry.callTime.split(":").map(Number);
   
@@ -108,22 +182,27 @@ export const toGoogleEvent = (entry) => {
     entry.type
   ].join(" | ");
 
-  // Check if status is "called" to prepend "UNCONFIRMED" to the title
-  const isCalled = entry.status?.toLowerCase() === "called";
-  const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
-  // Prepend start time to the event title (but not for unconfirmed events)
   const startTimeStr = `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}`;
   const formattedTime = formatTimeForTitle(startTimeStr);
-  const summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
+
+  let summary;
+  if (source === "rhino") {
+    const isCalled = entry.status?.toLowerCase() === "called";
+    const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
+    summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
+  } else {
+    summary = `${formattedTime} ${entry.show}`;
+  }
 
   return {
-    summary: summary,
+    summary,
     location: [entry.venue, entry.location].filter(Boolean).join(" - "),
     description: [entry.details, entry.notes].filter(Boolean).join(" | "),
     start: startStr,
     end: endStr,
     status: normalizeStatus(entry.status),
-    rowId
+    rowId,
+    source
   };
 };
 

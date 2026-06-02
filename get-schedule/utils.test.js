@@ -1,11 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   formatTimeForTitle,
   normalizeStatus,
+  isCallCancelledLabel,
   isEventCancelled,
   toGoogleEvent,
   formatDateTimeForTimezone,
-  pad
+  pad,
+  isEventInFuture
 } from './utils.js';
 
 describe('formatTimeForTitle', () => {
@@ -71,6 +73,20 @@ describe('normalizeStatus', () => {
   });
 });
 
+describe('isCallCancelledLabel', () => {
+  it('should match Rhino\'s exact "Call Cancelled" label', () => {
+    expect(isCallCancelledLabel('Call Cancelled')).toBe(true);
+    expect(isCallCancelledLabel('  Call Cancelled  ')).toBe(true);
+  });
+
+  it('should not match other spellings or unrelated text', () => {
+    expect(isCallCancelledLabel('Call Canceled')).toBe(false);
+    expect(isCallCancelledLabel('Confirmed')).toBe(false);
+    expect(isCallCancelledLabel('')).toBe(false);
+    expect(isCallCancelledLabel(null)).toBe(false);
+  });
+});
+
 describe('isEventCancelled', () => {
   it('should return true for events with isCallCancelled flag', () => {
     const entry = {
@@ -91,6 +107,14 @@ describe('isEventCancelled', () => {
   it('should return true for events with "cancelled" (lowercase) in show name', () => {
     const entry = {
       show: 'cancelled event',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "canceled" (American spelling) in show name', () => {
+    const entry = {
+      show: 'CANCELED (C) GHSA CHAMPIONSHIP',
       isCallCancelled: false
     };
     expect(isEventCancelled(entry)).toBe(true);
@@ -137,6 +161,26 @@ describe('toGoogleEvent', () => {
     expect(result.rowId).toContain('11/23/2025');
     expect(result.rowId).toContain('08:00');
     expect(result.rowId).toContain('ERYKAH BADU');
+  });
+
+  it('should not use Rhino UNCONFIRMED title rules for non-rhino sources', () => {
+    const entry = {
+      date: '12/04/2025',
+      callTime: '08:00',
+      show: 'SECOND PORTAL GIG',
+      venue: 'Arena',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Called',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry, { source: 'crewOne' });
+
+    expect(result.summary).toBe('7:30am SECOND PORTAL GIG');
+    expect(result.source).toBe('crewOne');
   });
 
   it('should handle "called" status with UNCONFIRMED prefix', () => {
@@ -297,6 +341,166 @@ describe('pad', () => {
 
   it('should handle zero', () => {
     expect(pad(0)).toBe('00');
+  });
+});
+
+describe('isEventInFuture', () => {
+  // Mock the current date to ensure consistent tests
+  const originalDate = Date;
+  
+  beforeEach(() => {
+    // Reset any mocks
+    global.Date = originalDate;
+  });
+
+  it('should return true for events in the future', () => {
+    // Set a fixed "now" date: December 27, 2025 at 8:00 PM Eastern
+    const mockNow = new Date('2025-12-27T20:00:00-05:00'); // 8 PM EST on Dec 27
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // Event on Dec 28 at 5 AM should be in the future
+    expect(isEventInFuture(2025, 12, 28, 5, 0, 'America/New_York')).toBe(true);
+  });
+
+  it('should return false for events in the past', () => {
+    // Set a fixed "now" date: December 28, 2025 at 6:00 AM Eastern
+    const mockNow = new Date('2025-12-28T06:00:00-05:00'); // 6 AM EST on Dec 28
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // Event on Dec 28 at 5 AM should be in the past (1 hour ago)
+    expect(isEventInFuture(2025, 12, 28, 5, 0, 'America/New_York')).toBe(false);
+  });
+
+  it('should return false for events happening right now (same minute)', () => {
+    // Set a fixed "now" date: December 28, 2025 at 5:00 AM Eastern
+    const mockNow = new Date('2025-12-28T05:00:00-05:00'); // 5 AM EST on Dec 28
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // Event at the exact same time should be considered past/current
+    expect(isEventInFuture(2025, 12, 28, 5, 0, 'America/New_York')).toBe(false);
+  });
+
+  it('should handle events later the same day', () => {
+    // Set a fixed "now" date: December 28, 2025 at 3:00 AM Eastern
+    const mockNow = new Date('2025-12-28T03:00:00-05:00'); // 3 AM EST on Dec 28
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // Event at 5 AM same day should be in the future
+    expect(isEventInFuture(2025, 12, 28, 5, 0, 'America/New_York')).toBe(true);
+  });
+
+  it('should handle events on different days correctly', () => {
+    // Set a fixed "now" date: December 27, 2025 at 11:00 PM Eastern
+    const mockNow = new Date('2025-12-27T23:00:00-05:00'); // 11 PM EST on Dec 27
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // Event on Dec 28 at 5 AM should be in the future (next day)
+    expect(isEventInFuture(2025, 12, 28, 5, 0, 'America/New_York')).toBe(true);
+    
+    // Event on Dec 27 at 10 PM should be in the past (1 hour ago)
+    expect(isEventInFuture(2025, 12, 27, 22, 0, 'America/New_York')).toBe(false);
+  });
+
+  it('should handle events near midnight correctly', () => {
+    // Set a fixed "now" date: December 27, 2025 at 11:30 PM Eastern
+    const mockNow = new Date('2025-12-27T23:30:00-05:00'); // 11:30 PM EST on Dec 27
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // Event at 11:45 PM same day should be in the future
+    expect(isEventInFuture(2025, 12, 27, 23, 45, 'America/New_York')).toBe(true);
+    
+    // Event at 12:00 AM next day should be in the future
+    expect(isEventInFuture(2025, 12, 28, 0, 0, 'America/New_York')).toBe(true);
+    
+    // Event at 11:00 PM same day should be in the past
+    expect(isEventInFuture(2025, 12, 27, 23, 0, 'America/New_York')).toBe(false);
+  });
+
+  it('should handle the specific bug case: 5am shift on 12/28 when run in evening on 12/27', () => {
+    // This is the exact bug scenario: function runs in evening on Dec 27
+    // Event is at 5am on Dec 28 - should be in the future
+    const mockNow = new Date('2025-12-27T20:00:00-05:00'); // 8 PM EST on Dec 27
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+    
+    // The 5am shift on 12/28 should be correctly identified as future
+    expect(isEventInFuture(2025, 12, 28, 5, 0, 'America/New_York')).toBe(true);
   });
 });
 

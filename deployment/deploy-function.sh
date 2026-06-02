@@ -37,6 +37,18 @@ fi
 # Step 2: Build environment variables
 echo "Step 2: Preparing environment variables..."
 ENV_VARS="RHINO_EMAIL=${RHINO_EMAIL},RHINO_PASSWORD=${RHINO_PASSWORD}"
+if [ -n "$SCHEDULE_SOURCES" ]; then
+  ENV_VARS="${ENV_VARS},SCHEDULE_SOURCES=${SCHEDULE_SOURCES}"
+fi
+if [ -n "$CREWONE_EMAIL" ]; then
+  ENV_VARS="${ENV_VARS},CREWONE_EMAIL=${CREWONE_EMAIL}"
+fi
+if [ -n "$CREWONE_PASSWORD" ]; then
+  ENV_VARS="${ENV_VARS},CREWONE_PASSWORD=${CREWONE_PASSWORD}"
+fi
+if [ -n "$CREWONE_LOGIN_URL" ]; then
+  ENV_VARS="${ENV_VARS},CREWONE_LOGIN_URL=${CREWONE_LOGIN_URL}"
+fi
 
 # Add Google OAuth env vars if they exist
 if [ -n "$GOOGLE_CLIENT_ID" ]; then
@@ -52,7 +64,7 @@ if [ -n "$GOOGLE_TOKEN" ]; then
   ENV_VARS="${ENV_VARS},GOOGLE_TOKEN=${GOOGLE_TOKEN}"
 fi
 
-echo "   (Make sure RHINO_EMAIL, RHINO_PASSWORD, and Google OAuth vars are set)"
+echo "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, plus Google OAuth vars)"
 
 # Step 3: Deploy the function
 echo ""
@@ -66,7 +78,7 @@ gcloud functions deploy $FUNCTION_NAME \
   --trigger-http \
   --allow-unauthenticated \
   --memory=1GB \
-  --timeout=540s \
+  --timeout=600s \
   --max-instances=1 \
   --set-env-vars="$ENV_VARS"
 

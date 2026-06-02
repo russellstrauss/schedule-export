@@ -15,6 +15,27 @@ Write-Host "Project: $ProjectId" -ForegroundColor Cyan
 Write-Host "Region: $Region" -ForegroundColor Cyan
 Write-Host ""
 
+# Always run from repo root (--source=. , paths to token.json / renew-auth)
+$repoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $repoRoot
+
+# Load repo-root .env into process env when vars are unset (e.g. RHINO_EMAIL)
+$dotEnvPath = Join-Path $repoRoot ".env"
+if (Test-Path $dotEnvPath) {
+    Get-Content $dotEnvPath | ForEach-Object {
+        if ($_ -match '^\s*([^#=]+)=(.*)$') {
+            $name = $matches[1].Trim()
+            $raw = $matches[2].Trim()
+            if (($raw.StartsWith('"') -and $raw.EndsWith('"')) -or ($raw.StartsWith("'") -and $raw.EndsWith("'"))) {
+                $raw = $raw.Substring(1, $raw.Length - 2)
+            }
+            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name, "Process"))) {
+                Set-Item -Path "Env:$name" -Value $raw
+            }
+        }
+    }
+}
+
 # Step 1: Check and renew token if needed (unless skipped)
 if (-not $SkipTokenCheck) {
     Write-Host "Step 1: Checking token status and renewing if needed..." -ForegroundColor Yellow
@@ -37,15 +58,28 @@ if (-not $SkipTokenCheck) {
 
 # Step 2: Prepare environment variables
 Write-Host "Step 2: Preparing environment variables..." -ForegroundColor Yellow
-Write-Host "   (Make sure RHINO_EMAIL, RHINO_PASSWORD, and Google OAuth vars are set)" -ForegroundColor Gray
+Write-Host "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, plus Google OAuth vars)" -ForegroundColor Gray
+
+$credentialsJson = Join-Path $repoRoot "get-schedule\google-calendar\credentials.json"
+$tokenJsonPath = Join-Path $repoRoot "get-schedule\google-calendar\token.json"
+if ((Test-Path $credentialsJson) -and (Test-Path $tokenJsonPath)) {
+    & (Join-Path $PSScriptRoot "prepare-oauth-env.ps1") | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: prepare-oauth-env.ps1 failed; Google OAuth may be missing from this deploy." -ForegroundColor Yellow
+    }
+}
 
 # Create a temporary YAML file for environment variables
 $envVarsFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.yaml'
 $yamlContent = @()
 
 # Add required environment variables
+if ($env:SCHEDULE_SOURCES) { $yamlContent += "SCHEDULE_SOURCES: `"$($env:SCHEDULE_SOURCES -replace '"', '\"')`"" }
 if ($env:RHINO_EMAIL) { $yamlContent += "RHINO_EMAIL: `"$($env:RHINO_EMAIL -replace '"', '\"')`"" }
 if ($env:RHINO_PASSWORD) { $yamlContent += "RHINO_PASSWORD: `"$($env:RHINO_PASSWORD -replace '"', '\"')`"" }
+if ($env:CREWONE_EMAIL) { $yamlContent += "CREWONE_EMAIL: `"$($env:CREWONE_EMAIL -replace '"', '\"')`"" }
+if ($env:CREWONE_PASSWORD) { $yamlContent += "CREWONE_PASSWORD: `"$($env:CREWONE_PASSWORD -replace '"', '\"')`"" }
+if ($env:CREWONE_LOGIN_URL) { $yamlContent += "CREWONE_LOGIN_URL: `"$($env:CREWONE_LOGIN_URL -replace '"', '\"')`"" }
 if ($env:GOOGLE_CLIENT_ID) { $yamlContent += "GOOGLE_CLIENT_ID: `"$($env:GOOGLE_CLIENT_ID -replace '"', '\"')`"" }
 if ($env:GOOGLE_CLIENT_SECRET) { $yamlContent += "GOOGLE_CLIENT_SECRET: `"$($env:GOOGLE_CLIENT_SECRET -replace '"', '\"')`"" }
 if ($env:GOOGLE_REDIRECT_URI) { $yamlContent += "GOOGLE_REDIRECT_URI: `"$($env:GOOGLE_REDIRECT_URI -replace '"', '\"')`"" }
@@ -76,7 +110,7 @@ gcloud functions deploy $FunctionName `
     --trigger-http `
     --allow-unauthenticated `
     --memory=1GB `
-    --timeout=540s `
+    --timeout=600s `
     --max-instances=1 `
     --env-vars-file=$envVarsFile
 
