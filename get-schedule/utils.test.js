@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   formatTimeForTitle,
   normalizeStatus,
@@ -9,6 +9,7 @@ import {
   formatDateTimeForTimezone,
   pad,
   isEventInFuture,
+  logAndMapEvents,
   sortScheduleEntriesChronologically
 } from './utils.js';
 
@@ -478,6 +479,66 @@ describe('pad', () => {
 
   it('should handle zero', () => {
     expect(pad(0)).toBe('00');
+  });
+});
+
+describe('logAndMapEvents evening sync', () => {
+  const originalDate = Date;
+
+  afterEach(() => {
+    global.Date = originalDate;
+  });
+
+  it('keeps next-day early-morning Rhino shifts when sync runs in the evening (UTC runtime)', () => {
+    const mockNow = new Date('2026-06-09T22:00:00-04:00'); // 10 PM EDT, already June 10 in UTC
+    global.Date = class extends originalDate {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(mockNow);
+        } else {
+          super(...args);
+        }
+      }
+      static now() {
+        return mockNow.getTime();
+      }
+    };
+
+    const entries = [
+      {
+        date: '6/10/2026',
+        callTime: '01:00',
+        show: 'EARLY LOAD IN',
+        venue: 'Arena',
+        location: 'Floor',
+        position: 'SH',
+        type: 'IN',
+        status: 'Confirmed',
+        details: '',
+        notes: ''
+      },
+      {
+        date: '6/10/2026',
+        callTime: '05:00',
+        show: 'MORNING SHOW',
+        venue: 'Arena',
+        location: 'Floor',
+        position: 'SH',
+        type: 'IN',
+        status: 'Confirmed',
+        details: '',
+        notes: ''
+      }
+    ];
+
+    const mapped = logAndMapEvents(entries, 'rhino', {
+      futureOnly: true,
+      timezone: 'America/New_York'
+    });
+
+    expect(mapped).toHaveLength(2);
+    expect(mapped[0].summary).toContain('EARLY LOAD IN');
+    expect(mapped[1].summary).toContain('MORNING SHOW');
   });
 });
 

@@ -4,7 +4,8 @@ import {
   legacyRhinoDeterministicIdFor,
   eventMatchesSource,
   rowIdFromEvent,
-  purgeSourceEvents
+  purgeSourceEvents,
+  purgeOrphanedSourceEvents
 } from "./add-event.js";
 
 const mockList = vi.fn();
@@ -111,5 +112,51 @@ describe("purgeSourceEvents", () => {
     expect(new Date(firstArgs.timeMin).getTime()).toBeLessThan(Date.now() - 365 * 24 * 60 * 60 * 1000);
     expect(secondArgs.pageToken).toBe("page2");
     expect(mockDelete).toHaveBeenCalled();
+  });
+});
+
+describe("purgeOrphanedSourceEvents", () => {
+  beforeEach(() => {
+    mockList.mockReset();
+    mockDelete.mockReset();
+    mockDelete.mockResolvedValue({});
+  });
+
+  it("deletes only future tagged events whose rowId is not on the portal schedule", async () => {
+    const kept = {
+      id: "evt-keep",
+      extendedProperties: {
+        private: { scheduleSource: "rhino", scheduleRowId: "still-on-portal" }
+      }
+    };
+    const removed = {
+      id: "evt-drop",
+      extendedProperties: {
+        private: { scheduleSource: "rhino", scheduleRowId: "gone-from-portal" }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [kept, removed] } });
+
+    await purgeOrphanedSourceEvents({}, "rhino", ["still-on-portal"]);
+
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith({
+      calendarId: "primary",
+      eventId: expect.any(String)
+    });
+  });
+
+  it("does not delete when every listed row is still active", async () => {
+    const kept = {
+      id: "evt-keep",
+      extendedProperties: {
+        private: { scheduleSource: "rhino", scheduleRowId: "still-on-portal" }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [kept] } });
+
+    await purgeOrphanedSourceEvents({}, "rhino", ["still-on-portal"]);
+
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 });

@@ -160,6 +160,35 @@ async function listSourceEvents(calendar, source, timeMin) {
 }
 
 /**
+ * @param {import("googleapis").calendar_v3.Calendar} calendar
+ * @param {string} source
+ * @param {string} rowId
+ * @param {string} [listedEventId]
+ */
+async function deleteSourceEventByRowId(calendar, source, rowId, listedEventId) {
+	const idsToTry = [...eventIdsForDelete(source, rowId)];
+	if (listedEventId) idsToTry.push(listedEventId);
+
+	let deleted = false;
+	for (const eventId of [...new Set(idsToTry)]) {
+		try {
+			await calendar.events.delete({ calendarId: "primary", eventId });
+			deleted = true;
+			break;
+		} catch (err) {
+			const notFound = err?.code === 404 || err?.response?.status === 404;
+			if (!notFound) {
+				console.error(`deleteSourceEventByRowId(${source}): delete failed for ${eventId}`, err);
+				throw err;
+			}
+		}
+	}
+	if (!deleted) {
+		console.warn(`deleteSourceEventByRowId(${source}): could not delete event for row ${rowId}`);
+	}
+}
+
+/**
  * Delete events tagged for a schedule source.
  * @param {OAuth2Client} auth
  * @param {string} source
@@ -179,25 +208,35 @@ export async function purgeSourceEvents(auth, source, options = {}) {
 	for (const ev of sourceEvents) {
 		const rowId = rowIdFromEvent(ev, source);
 		if (!rowId) continue;
+		await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
+	}
+}
 
-		const idsToTry = [...eventIdsForDelete(source, rowId), ev.id];
-		let deleted = false;
-		for (const eventId of idsToTry) {
-			try {
-				await calendar.events.delete({ calendarId: "primary", eventId });
-				deleted = true;
-				break;
-			} catch (err) {
-				const notFound = err?.code === 404 || err?.response?.status === 404;
-				if (!notFound) {
-					console.error(`purgeSourceEvents(${source}): delete failed for ${eventId}`, err);
-					throw err;
-				}
-			}
-		}
-		if (!deleted) {
-			console.warn(`purgeSourceEvents(${source}): could not delete event for row ${rowId}`);
-		}
+/**
+ * Delete future tagged events that are no longer on the portal schedule.
+ * Keeps events that Rhino (etc.) still lists, even when they are not re-synced this run.
+ * @param {OAuth2Client} auth
+ * @param {string} source
+ * @param {string[]} activeRowIds - row ids from the latest portal fetch (non-cancelled)
+ * @param {{ futureOnly?: boolean }} [options]
+ */
+export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, options = {}) {
+	const futureOnly = options.futureOnly !== false;
+	const activeSet = new Set(activeRowIds);
+	const calendar = google.calendar({ version: "v3", auth });
+	const timeMin = futureOnly
+		? new Date().toISOString()
+		: new Date(
+				Date.now() - PURGE_LOOKBACK_YEARS * 365.25 * 24 * 60 * 60 * 1000
+			).toISOString();
+
+	const sourceEvents = await listSourceEvents(calendar, source, timeMin);
+
+	for (const ev of sourceEvents) {
+		const rowId = rowIdFromEvent(ev, source);
+		if (!rowId) continue;
+		if (activeSet.has(rowId)) continue;
+		await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
 	}
 }
 

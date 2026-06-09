@@ -1,13 +1,13 @@
 import dotenv from "dotenv";
 
 import { authorize } from "./google-calendar/auth.js";
-import { addEvent, purgeSourceEvents } from "./google-calendar/add-event.js";
+import { addEvent, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
 import { withAuthRetry } from "./auth-handler.js";
 import { trySyncIatse927FromStore } from "./ingest-iatse927.js";
 import { getPuppeteer } from "./puppeteer.js";
 import { getEnabledSourceIds, getSource } from "./sources/index.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
-import { logAndMapEvents } from "./utils.js";
+import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
 
 dotenv.config();
 
@@ -39,7 +39,8 @@ function getRunnablePortalSourceIds(enabledIds) {
  * @param {string[]} portalSourceIds
  */
 async function syncPortalSources(browser, portalSourceIds) {
-  const eventsBySource = new Map();
+  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; activeRowIds: string[] }>} */
+  const syncPlanBySource = new Map();
 
   for (const sourceId of portalSourceIds) {
     const source = getSource(sourceId);
@@ -47,13 +48,18 @@ async function syncPortalSources(browser, portalSourceIds) {
     const page = await browser.newPage();
     try {
       const entries = await source.fetchSchedule(page);
-      eventsBySource.set(sourceId, filterAndMapEvents(entries, sourceId));
+      const validEntries = entries.filter((entry) => !isEventCancelled(entry));
+      const activeRowIds = validEntries.map((entry) => scheduleRowId(entry));
+      syncPlanBySource.set(sourceId, {
+        googleEvents: filterAndMapEvents(entries, sourceId),
+        activeRowIds
+      });
     } finally {
       await page.close();
     }
   }
 
-  if (eventsBySource.size === 0) {
+  if (syncPlanBySource.size === 0) {
     if (portalSourceIds.length > 0) {
       console.warn("⚠️  Portal sources ran but produced no events to sync.");
     }
@@ -62,11 +68,11 @@ async function syncPortalSources(browser, portalSourceIds) {
 
   let auth = await authorize();
 
-  for (const [sourceId, googleEvents] of eventsBySource) {
+  for (const [sourceId, { googleEvents, activeRowIds }] of syncPlanBySource) {
     console.log(`🗓️ [${sourceId}] Syncing ${googleEvents.length} events to Google Calendar`);
 
     auth = await withAuthRetry(auth, async (a) => {
-      await purgeSourceEvents(a, sourceId);
+      await purgeOrphanedSourceEvents(a, sourceId, activeRowIds);
       return a;
     });
 
