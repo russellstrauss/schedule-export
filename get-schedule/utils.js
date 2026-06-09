@@ -360,7 +360,6 @@ export function logAndMapEvents(entries, sourceId, options = {}) {
   const { futureOnly = true, timezone = "America/New_York" } = options;
 
   const validEntries = entries.filter((entry) => !isEventCancelled(entry));
-  console.log(`📋 [${sourceId}] Found ${validEntries.length} valid (non-cancelled) events`);
 
   let syncEntries = validEntries;
   if (futureOnly) {
@@ -369,17 +368,8 @@ export function logAndMapEvents(entries, sourceId, options = {}) {
         entry.date,
         entry.callTime
       );
-      const isFuture = isEventInFuture(year, month, day, hours, minutes, timezone);
-
-      if (!isFuture) {
-        console.log(
-          `⏰ [${sourceId}] Filtered out past event: ${entry.date} ${entry.callTime} - ${entry.show}`
-        );
-      }
-      return isFuture;
+      return isEventInFuture(year, month, day, hours, minutes, timezone);
     });
-
-    console.log(`🔮 [${sourceId}] Found ${syncEntries.length} future events`);
   }
 
   const googleEvents = syncEntries.map((entry) =>

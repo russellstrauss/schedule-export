@@ -69,8 +69,6 @@ async function syncPortalSources(browser, portalSourceIds) {
   let auth = await authorize();
 
   for (const [sourceId, { googleEvents, activeRowIds }] of syncPlanBySource) {
-    console.log(`🗓️ [${sourceId}] Syncing ${googleEvents.length} events to Google Calendar`);
-
     auth = await withAuthRetry(auth, async (a) => {
       await purgeOrphanedSourceEvents(a, sourceId, activeRowIds);
       return a;

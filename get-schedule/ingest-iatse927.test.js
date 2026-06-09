@@ -14,7 +14,7 @@ vi.mock("./iatse927-message-store.js", () => ({
 
 const mockEntry = {
   source: "iatse927",
-  date: "6/3/2026",
+  date: "6/15/2026",
   callTime: "10:30",
   show: "Charlie Puth",
   venue: "Chastain Amphitheater",
@@ -41,7 +41,7 @@ vi.mock("./google-calendar/auth.js", () => ({
 }));
 
 vi.mock("./google-calendar/add-event.js", () => ({
-  purgeSourceEvents: vi.fn(async () => {}),
+  purgeOrphanedSourceEvents: vi.fn(async () => {}),
   addEvent: vi.fn(async () => {})
 }));
 
@@ -50,7 +50,7 @@ vi.mock("./auth-handler.js", () => ({
 }));
 
 import { ingestIatse927, trySyncIatse927FromStore } from "./ingest-iatse927.js";
-import { purgeSourceEvents, addEvent } from "./google-calendar/add-event.js";
+import { purgeOrphanedSourceEvents, addEvent } from "./google-calendar/add-event.js";
 import { appendMessage, loadAllMessages } from "./iatse927-message-store.js";
 import { resolveScheduleEntriesWithValidation } from "./iatse927-gemini.js";
 
@@ -63,16 +63,20 @@ describe("ingestIatse927", () => {
     await expect(ingestIatse927({ text: "" })).rejects.toThrow(/non-empty text/);
   });
 
-  it("stores, resolves entries, purges all source events, syncs, and returns warnings", async () => {
+  it("stores, resolves entries, purges orphaned future events, syncs, and returns warnings", async () => {
     const result = await ingestIatse927({
       text: SAMPLE_REMINDER_SMS
     });
 
     expect(appendMessage).toHaveBeenCalled();
     expect(resolveScheduleEntriesWithValidation).toHaveBeenCalled();
-    expect(purgeSourceEvents).toHaveBeenCalledWith(expect.anything(), "iatse927", {
-      futureOnly: false
-    });
+    expect(purgeOrphanedSourceEvents).toHaveBeenCalledWith(
+      expect.anything(),
+      "iatse927",
+      expect.arrayContaining([
+        expect.stringContaining("Charlie Puth")
+      ])
+    );
     expect(addEvent).toHaveBeenCalled();
 
     const eventArg = vi.mocked(addEvent).mock.calls[0]?.[1];
@@ -113,9 +117,11 @@ describe("trySyncIatse927FromStore", () => {
   it("syncs when configured and messages exist", async () => {
     const result = await trySyncIatse927FromStore();
     expect(result?.synced).toBe(1);
-    expect(purgeSourceEvents).toHaveBeenCalledWith(expect.anything(), "iatse927", {
-      futureOnly: false
-    });
+    expect(purgeOrphanedSourceEvents).toHaveBeenCalledWith(
+      expect.anything(),
+      "iatse927",
+      expect.any(Array)
+    );
   });
 
   it("returns null when Gemini is unavailable", async () => {

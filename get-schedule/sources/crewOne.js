@@ -229,7 +229,6 @@ export async function fetchSchedule(page) {
   const detailCache = new Map();
   const uniqueDetailUrls = [...new Set(rawRows.map((r) => r.detailUrl).filter(Boolean))];
   for (const detailUrl of uniqueDetailUrls) {
-    console.log(`[crewOne] Loading event details: ${detailUrl}`);
     await fetchEventDetail(page, detailUrl, detailCache);
   }
 

@@ -75,6 +75,7 @@ $envVarsFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.yaml'
 $yamlContent = @()
 
 # Add required environment variables
+$yamlContent += "GOOGLE_CLOUD_PROJECT: `"$ProjectId`""
 if ($env:SCHEDULE_SOURCES) { $yamlContent += "SCHEDULE_SOURCES: `"$($env:SCHEDULE_SOURCES -replace '"', '\"')`"" }
 if ($env:RHINO_EMAIL) { $yamlContent += "RHINO_EMAIL: `"$($env:RHINO_EMAIL -replace '"', '\"')`"" }
 if ($env:RHINO_PASSWORD) { $yamlContent += "RHINO_PASSWORD: `"$($env:RHINO_PASSWORD -replace '"', '\"')`"" }

@@ -1,5 +1,5 @@
 import { authorize } from "./google-calendar/auth.js";
-import { addEvent, purgeSourceEvents } from "./google-calendar/add-event.js";
+import { addEvent, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
 import { withAuthRetry } from "./auth-handler.js";
 import {
   appendMessage,
@@ -7,9 +7,11 @@ import {
   isFirestoreNotFoundError,
   isFirestoreCredentialsError
 } from "./iatse927-message-store.js";
+import { isFirestoreProjectIdError } from "./iatse927-firestore-auth.js";
 import { resolveScheduleEntriesWithValidation, isGeminiUnavailableError } from "./iatse927-gemini.js";
 import { sourceId } from "./sources/iatse927.js";
-import { logAndMapEvents } from "./utils.js";
+import { DEFAULT_TIMEZONE } from "./sources/types.js";
+import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
 
 /**
  * @param {{ text: string; receivedAt?: Date | null; messageId?: string }[]} messages
@@ -18,14 +20,19 @@ import { logAndMapEvents } from "./utils.js";
 export async function syncIatse927FromMessages(messages) {
   console.log(`🌐 Fetching schedule from ${sourceId}...`);
   const { entries, warnings } = await resolveScheduleEntriesWithValidation(messages);
-  const googleEvents = logAndMapEvents(entries, sourceId, { futureOnly: false });
-
-  console.log(`🗓️ [${sourceId}] Syncing ${googleEvents.length} events to Google Calendar`);
+  const validEntries = entries.filter((entry) => !isEventCancelled(entry));
+  const activeRowIds = validEntries.map((entry) =>
+    scheduleRowId({ ...entry, source: sourceId })
+  );
+  const googleEvents = logAndMapEvents(entries, sourceId, {
+    futureOnly: true,
+    timezone: DEFAULT_TIMEZONE
+  });
 
   let auth = await authorize();
 
   auth = await withAuthRetry(auth, async (a) => {
-    await purgeSourceEvents(a, sourceId, { futureOnly: false });
+    await purgeOrphanedSourceEvents(a, sourceId, activeRowIds);
     return a;
   });
 
@@ -75,6 +82,12 @@ export async function trySyncIatse927FromStore() {
     if (isFirestoreCredentialsError(err)) {
       console.warn(
         `⚠️  Skipping ${sourceId}: Firestore credentials not available (${err instanceof Error ? err.message : err})`
+      );
+      return null;
+    }
+    if (isFirestoreProjectIdError(err)) {
+      console.warn(
+        `⚠️  Skipping ${sourceId}: Firestore project ID not configured (${err instanceof Error ? err.message : err})`
       );
       return null;
     }

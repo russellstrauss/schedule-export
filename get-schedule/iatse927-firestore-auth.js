@@ -1,4 +1,5 @@
-import { execSync } from "child_process";
+import { execSync, execFileSync } from "child_process";
+import { isCloudRuntime } from "./runtime-env.js";
 
 /**
  * @param {unknown} err
@@ -14,11 +15,46 @@ export function isFirestoreCredentialsError(err) {
 }
 
 /**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isFirestoreProjectIdError(err) {
+  const message = String(err?.message || err || "");
+  return message.includes("Firestore project ID not found");
+}
+
+/** Cached after first successful resolution in cloud. */
+let cachedCloudProjectId = null;
+
+/**
  * @returns {string}
  */
 export function getFirestoreProjectId() {
-  const fromEnv = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+  const fromEnv =
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT;
   if (fromEnv?.trim()) return fromEnv.trim();
+
+  if (cachedCloudProjectId) return cachedCloudProjectId;
+
+  if (isCloudRuntime()) {
+    try {
+      const script =
+        "require('http').get({hostname:'metadata.google.internal',path:'/computeMetadata/v1/project/project-id',headers:{'Metadata-Flavor':'Google'}},r=>{let b='';r.on('data',d=>b+=d);r.on('end',()=>process.stdout.write(b));}).on('error',()=>process.exit(1));";
+      const project = execFileSync(process.execPath, ["-e", script], {
+        encoding: "utf8",
+        timeout: 3000,
+        stdio: ["pipe", "pipe", "pipe"]
+      }).trim();
+      if (project) {
+        cachedCloudProjectId = project;
+        return project;
+      }
+    } catch {
+      // fall through
+    }
+  }
 
   try {
     const project = execSync("gcloud config get-value project", {
