@@ -112,6 +112,47 @@ export SCHEDULE_SOURCES="rhino,crewOne"
 
 Copy [.env.example](../.env.example) to `.env` for local runs with `node sync.js`.
 
+## Step 4c: Firestore for IATSE 927 SMS ingest
+
+IATSE ingest stores message text in Firestore collection `iatse927_messages`. If no database exists, ingest returns **500** with gRPC **NOT_FOUND**.
+
+1. **Create database** (once per project), same region as the function when possible:
+
+   ```bash
+   gcloud firestore databases create --location=us-central1 --type=firestore-native --project=YOUR_PROJECT_ID
+   ```
+
+   Or use Cloud Console → Firestore → Create database → **Native** mode.
+
+2. **Grant the function service account** write access (Gen2 default compute SA):
+
+   ```bash
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+     --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+     --role="roles/datastore.user"
+   ```
+
+3. Set `IATSE_ALLOWED_PHONE` in `.env` and redeploy (see `.env.example`).
+
+4. **Gemini (required):** Create an API key at [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` in `.env` before deploy. On each ingest, the message is stored in Firestore, then **all** stored SMS messages are loaded and sent to Gemini in one pass (extract with built-in double-check against thread context) to parse and merge shifts. The calendar is fully replaced for IATSE events (past and future). If the key is missing or the API fails, ingest returns an error and does not sync the calendar. Free-tier rate limits apply; typical personal SMS volume is fine.
+
+5. **Bootstrap historical threads (one-time, local):** Export Google Messages RCS threads to `.txt` files, then:
+
+   ```bash
+   npm run bootstrap:iatse927 -- get-schedule/fixtures/shawn-scheduling.txt get-schedule/fixtures/tyler-reminders.txt --dry-run
+   npm run bootstrap:iatse927 -- get-schedule/fixtures/shawn-scheduling.txt get-schedule/fixtures/tyler-reminders.txt
+   ```
+
+   Requires local `.env` with Firestore credentials, `GEMINI_API_KEY`, and Google Calendar OAuth. Use `--no-sync` to import messages only. Use `--ref 2026-06-06` to set the reference date for year inference on pasted exports.
+
+6. **Re-sync from Firestore (no new SMS):** When messages are already stored and you want to refresh the calendar:
+
+   ```bash
+   npm run sync:iatse927
+   ```
+
+   IATSE is also synced automatically when you run the main local sync (`node sync.js`) or trigger the Cloud Function batch sync (after Rhino/CrewOne portal sources). Loads the full Firestore message history, re-parses with Gemini, purges all IATSE-tagged calendar events, and re-inserts all confirmed shifts (past and future).
+
 ## Step 5: Deploy the Cloud Function
 
 **Windows (PowerShell):**

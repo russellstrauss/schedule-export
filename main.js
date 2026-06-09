@@ -1,18 +1,58 @@
 import getSchedule from "./get-schedule/get-schedule.js";
+import {
+  parseRequestBody,
+  isIngestRequest,
+  verifyIngestPhone
+} from "./get-schedule/request-router.js";
 
 /**
  * Cloud Function entry point for schedule synchronization
  * Can be triggered by HTTP request or Cloud Scheduler
  */
 export async function syncSchedule(req, res) {
-  // Set CORS headers for browser requests (optional)
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
 
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
+    return;
+  }
+
+  const body = parseRequestBody(req);
+
+  if (isIngestRequest(req, body)) {
+    try {
+      if (!verifyIngestPhone(body)) {
+        res.status(401).json({
+          success: false,
+          error: "Unauthorized: phone not allowed",
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+
+      const { ingestIatse927 } = await import("./get-schedule/ingest-iatse927.js");
+      const payload = body && typeof body === "object" ? body : {};
+      console.log("📱 Starting IATSE 927 ingest...");
+      const result = await ingestIatse927(payload);
+      console.log("✅ IATSE 927 ingest completed.");
+
+      res.status(200).json({
+        success: true,
+        message: "IATSE 927 ingest completed successfully",
+        warnings: result.warnings ?? [],
+        ...result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("❌ IATSE ingest failed:", err);
+      res.status(err.message?.includes("requires") ? 400 : 500).json({
+        success: false,
+        error: err.message,
+        timestamp: new Date().toISOString()
+      });
+    }
     return;
   }
 
@@ -20,7 +60,7 @@ export async function syncSchedule(req, res) {
     console.log("🔄 Starting schedule sync...");
     await getSchedule();
     console.log("✅ Schedule sync completed.");
-    
+
     res.status(200).json({
       success: true,
       message: "Schedule sync completed successfully",

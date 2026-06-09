@@ -15,6 +15,8 @@
  * @property {string} [notes]
  * @property {boolean} [isCallCancelled]
  * @property {string} [venueLink]
+ * @property {number[]} [evidenceIndices]
+ * @property {string} [confidence]
  */
 
 export const DEFAULT_TIMEZONE = "America/New_York";

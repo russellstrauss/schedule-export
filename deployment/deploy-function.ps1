@@ -59,7 +59,7 @@ if (-not $SkipTokenCheck) {
 
 # Step 2: Prepare environment variables
 Write-Host "Step 2: Preparing environment variables..." -ForegroundColor Yellow
-Write-Host "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, plus Google OAuth vars)" -ForegroundColor Gray
+Write-Host "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, IATSE_ALLOWED_PHONE, GEMINI_*, plus Google OAuth vars)" -ForegroundColor Gray
 
 $credentialsJson = Join-Path $repoRoot "get-schedule\google-calendar\credentials.json"
 $tokenJsonPath = Join-Path $repoRoot "get-schedule\google-calendar\token.json"
@@ -89,6 +89,9 @@ if ($env:GOOGLE_TOKEN) {
 	$tokenEscaped = $env:GOOGLE_TOKEN -replace '"', '\"' -replace '\$', '\$'
 	$yamlContent += "GOOGLE_TOKEN: `"$tokenEscaped`""
 }
+if ($env:IATSE_ALLOWED_PHONE) { $yamlContent += "IATSE_ALLOWED_PHONE: `"$($env:IATSE_ALLOWED_PHONE -replace '"', '\"')`"" }
+if ($env:GEMINI_API_KEY) { $yamlContent += "GEMINI_API_KEY: `"$($env:GEMINI_API_KEY -replace '"', '\"')`"" }
+if ($env:GEMINI_MODEL) { $yamlContent += "GEMINI_MODEL: `"$($env:GEMINI_MODEL -replace '"', '\"')`"" }
 
 # Write YAML file with proper format
 if ($yamlContent.Count -eq 0) {

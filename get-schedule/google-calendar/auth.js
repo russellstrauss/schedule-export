@@ -6,6 +6,7 @@ import { google } from "googleapis";
 import open from "open";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { isCloudRuntime } from "../runtime-env.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -34,18 +35,7 @@ async function listenForCode(oAuth2Client, authUrl, redirectUri) {
 }
 
 export async function authorize() {
-	const isCloudFunction = !!(
-		process.env.GOOGLE_CLOUD_PROJECT ||
-		process.env.FUNCTION_TARGET ||
-		process.env.K_SERVICE ||
-		process.env.FUNCTION_NAME ||
-		process.env.K_REVISION ||
-		(process.env.HOME && process.env.HOME.includes('www-data-home')) ||
-		(process.env.PWD && process.env.PWD.includes('www-data-home')) ||
-		(process.env.PWD && process.env.PWD.includes('/workspace'))
-	);
-	
-	const isLocal = !isCloudFunction;
+	const isLocal = !isCloudRuntime();
 	
 	let client_id, client_secret, redirect_uri, tokens;
 
@@ -93,7 +83,7 @@ export async function authorize() {
 			tokens.access_token = newTokens.access_token;
 			tokens.expiry_date = newTokens.expiry_date;
 			
-			if (isCloudFunction) {
+			if (!isLocal) {
 				console.log('🔄 Access token refreshed automatically (expires in ~1 hour)');
 			} else {
 				// In local development, save to file to persist the updated token

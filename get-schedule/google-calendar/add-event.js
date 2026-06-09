@@ -5,6 +5,7 @@ import { google } from "googleapis";
 /** Configuration */
 const DEFAULT_TIMEZONE = "America/New_York";
 const ID_LENGTH = 40;
+const PURGE_LOOKBACK_YEARS = 2;
 
 /** Build a stable, URL-safe id for a source row */
 export function deterministicIdFor(source, rowId) {
@@ -131,23 +132,49 @@ export async function addEvent(auth, event) {
 }
 
 /**
- * Delete future events tagged for a schedule source (preserves past events).
+ * @param {import("googleapis").calendar_v3.Calendar} calendar
+ * @param {string} source
+ * @param {string} timeMin
+ * @returns {Promise<import("googleapis").calendar_v3.Schema$Event[]>}
+ */
+async function listSourceEvents(calendar, source, timeMin) {
+	/** @type {import("googleapis").calendar_v3.Schema$Event[]} */
+	const sourceEvents = [];
+	let pageToken;
+
+	do {
+		const res = await calendar.events.list({
+			calendarId: "primary",
+			timeMin,
+			singleEvents: true,
+			orderBy: "startTime",
+			maxResults: 2500,
+			pageToken
+		});
+		const items = res.data.items || [];
+		sourceEvents.push(...items.filter((e) => eventMatchesSource(e, source)));
+		pageToken = res.data.nextPageToken;
+	} while (pageToken);
+
+	return sourceEvents;
+}
+
+/**
+ * Delete events tagged for a schedule source.
  * @param {OAuth2Client} auth
  * @param {string} source
+ * @param {{ futureOnly?: boolean }} [options] - futureOnly true (default) preserves past events
  */
-export async function purgeSourceEvents(auth, source) {
+export async function purgeSourceEvents(auth, source, options = {}) {
+	const futureOnly = options.futureOnly !== false;
 	const calendar = google.calendar({ version: "v3", auth });
-	const now = new Date().toISOString();
-	const res = await calendar.events.list({
-		calendarId: "primary",
-		timeMin: now,
-		singleEvents: true,
-		orderBy: "startTime",
-		maxResults: 2500
-	});
+	const timeMin = futureOnly
+		? new Date().toISOString()
+		: new Date(
+				Date.now() - PURGE_LOOKBACK_YEARS * 365.25 * 24 * 60 * 60 * 1000
+			).toISOString();
 
-	const items = res.data.items || [];
-	const sourceEvents = items.filter((e) => eventMatchesSource(e, source));
+	const sourceEvents = await listSourceEvents(calendar, source, timeMin);
 
 	for (const ev of sourceEvents) {
 		const rowId = rowIdFromEvent(ev, source);

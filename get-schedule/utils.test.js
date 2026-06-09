@@ -8,8 +8,24 @@ import {
   toGoogleEvent,
   formatDateTimeForTimezone,
   pad,
-  isEventInFuture
+  isEventInFuture,
+  sortScheduleEntriesChronologically
 } from './utils.js';
+
+describe('sortScheduleEntriesChronologically', () => {
+  it('sorts by date then call time', () => {
+    const sorted = sortScheduleEntriesChronologically([
+      { date: '6/10/2026', callTime: '22:00', show: 'B' },
+      { date: '5/15/2026', callTime: '21:00', show: 'A' },
+      { date: '6/10/2026', callTime: '10:00', show: 'B' }
+    ]);
+    expect(sorted.map((e) => `${e.date} ${e.callTime}`)).toEqual([
+      '5/15/2026 21:00',
+      '6/10/2026 10:00',
+      '6/10/2026 22:00'
+    ]);
+  });
+});
 
 describe('formatTimeForTitle', () => {
   it('should format morning times correctly', () => {
@@ -244,6 +260,23 @@ describe('toGoogleEvent', () => {
 
     expect(result.summary).toBe('7:30am SECOND PORTAL GIG');
     expect(result.source).toBe('crewOne');
+  });
+
+  it('includes shift type in IATSE summaries', () => {
+    const entry = {
+      date: '6/3/2026',
+      callTime: '22:00',
+      show: 'Charlie Puth',
+      venue: 'Chastain Amphitheater',
+      location: '',
+      position: '',
+      type: 'Load Out',
+      status: 'confirmed'
+    };
+
+    const result = toGoogleEvent(entry, { source: 'iatse927' });
+
+    expect(result.summary).toBe('9:30pm (Load Out) Charlie Puth');
   });
 
   it('should handle "called" status with UNCONFIRMED prefix', () => {

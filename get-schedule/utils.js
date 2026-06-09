@@ -6,6 +6,22 @@
 export const pad = (num) => num.toString().padStart(2, "0");
 
 /**
+ * @param {import("./sources/types.js").ScheduleEntry} entry
+ */
+export function scheduleEntrySortKey(entry) {
+  const [month, day, year] = entry.date.split("/").map(Number);
+  const [hours, minutes] = entry.callTime.split(":").map(Number);
+  return year * 1e8 + month * 1e6 + day * 1e4 + hours * 100 + minutes;
+}
+
+/**
+ * @param {import("./sources/types.js").ScheduleEntry[]} entries
+ */
+export function sortScheduleEntriesChronologically(entries) {
+  return [...entries].sort((a, b) => scheduleEntrySortKey(a) - scheduleEntrySortKey(b));
+}
+
+/**
  * Format time for event title: "08:00" -> "8am", "19:00" -> "7pm", "12:00" -> "12pm"
  */
 export const formatTimeForTitle = (timeStr) => {
@@ -201,6 +217,8 @@ export const toGoogleEvent = (entry, options = {}) => {
     const isCalled = entry.status?.toLowerCase() === "called";
     const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
     summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
+  } else if (source === "iatse927" && entry.type) {
+    summary = `${formattedTime} (${entry.type}) ${entry.show}`;
   } else {
     summary = `${formattedTime} ${entry.show}`;
   }
@@ -223,4 +241,47 @@ export const toGoogleEvent = (entry, options = {}) => {
     source
   };
 };
+
+/**
+ * Log parsed schedule entries (portal-style) and return Google Calendar events.
+ * @param {import("./sources/types.js").ScheduleEntry[]} entries
+ * @param {string} sourceId
+ * @param {{ futureOnly?: boolean; timezone?: string }} [options]
+ * @returns {ReturnType<typeof toGoogleEvent>[]}
+ */
+export function logAndMapEvents(entries, sourceId, options = {}) {
+  const { futureOnly = true, timezone = "America/New_York" } = options;
+
+  const validEntries = entries.filter((entry) => !isEventCancelled(entry));
+  console.log(`📋 [${sourceId}] Found ${validEntries.length} valid (non-cancelled) events`);
+
+  let syncEntries = validEntries;
+  if (futureOnly) {
+    syncEntries = validEntries.filter((entry) => {
+      const [month, day, year] = entry.date.split("/").map(Number);
+      const [hours, minutes] = entry.callTime.split(":").map(Number);
+      const isFuture = isEventInFuture(year, month, day, hours, minutes, timezone);
+
+      if (!isFuture) {
+        console.log(
+          `⏰ [${sourceId}] Filtered out past event: ${entry.date} ${entry.callTime} - ${entry.show}`
+        );
+      }
+      return isFuture;
+    });
+
+    console.log(`🔮 [${sourceId}] Found ${syncEntries.length} future events`);
+  }
+
+  const googleEvents = syncEntries.map((entry) => toGoogleEvent(entry, { source: sourceId }));
+  syncEntries.forEach((entry, index) => {
+    const logSummary =
+      sourceId === "iatse927"
+        ? `${formatTimeForTitle(entry.callTime)} ${entry.show}`
+        : googleEvents[index].summary;
+    console.log(`  ✅ [${sourceId}] ${entry.date} ${logSummary}`);
+  });
+
+  return googleEvents;
+}
 

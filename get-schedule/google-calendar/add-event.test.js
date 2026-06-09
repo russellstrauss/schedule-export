@@ -1,10 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   deterministicIdFor,
   legacyRhinoDeterministicIdFor,
   eventMatchesSource,
-  rowIdFromEvent
+  rowIdFromEvent,
+  purgeSourceEvents
 } from "./add-event.js";
+
+const mockList = vi.fn();
+const mockDelete = vi.fn();
+
+vi.mock("googleapis", () => ({
+  google: {
+    calendar: () => ({
+      events: {
+        list: mockList,
+        delete: mockDelete
+      }
+    })
+  }
+}));
 
 describe("deterministicIdFor", () => {
   it("should produce different ids for different sources with the same rowId", () => {
@@ -56,5 +71,45 @@ describe("rowIdFromEvent", () => {
       extendedProperties: { private: { rhinoRowId: "legacy" } }
     };
     expect(rowIdFromEvent(ev, "rhino")).toBe("legacy");
+  });
+});
+
+describe("purgeSourceEvents", () => {
+  beforeEach(() => {
+    mockList.mockReset();
+    mockDelete.mockReset();
+    mockDelete.mockResolvedValue({});
+  });
+
+  it("uses timeMin now when futureOnly is true (default)", async () => {
+    mockList.mockResolvedValueOnce({ data: { items: [] } });
+
+    await purgeSourceEvents({}, "iatse927");
+
+    expect(mockList).toHaveBeenCalledTimes(1);
+    const args = mockList.mock.calls[0][0];
+    expect(args.timeMin).toBeDefined();
+    expect(new Date(args.timeMin).getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
+  it("uses lookback timeMin and paginates when futureOnly is false", async () => {
+    const tagged = {
+      id: "evt1",
+      extendedProperties: {
+        private: { scheduleSource: "iatse927", scheduleRowId: "row1" }
+      }
+    };
+    mockList
+      .mockResolvedValueOnce({ data: { items: [tagged], nextPageToken: "page2" } })
+      .mockResolvedValueOnce({ data: { items: [] } });
+
+    await purgeSourceEvents({}, "iatse927", { futureOnly: false });
+
+    expect(mockList).toHaveBeenCalledTimes(2);
+    const firstArgs = mockList.mock.calls[0][0];
+    const secondArgs = mockList.mock.calls[1][0];
+    expect(new Date(firstArgs.timeMin).getTime()).toBeLessThan(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    expect(secondArgs.pageToken).toBe("page2");
+    expect(mockDelete).toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { authorize } from "./google-calendar/auth.js";
+import { isCloudRuntime } from "./runtime-env.js";
 
 function isExpiredTokenError(error) {
   const errorCode = error?.code;
@@ -46,16 +47,6 @@ function isExpiredTokenError(error) {
   return false;
 }
 
-function isCloudFunction() {
-  return !!(
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    process.env.FUNCTION_TARGET ||
-    process.env.K_SERVICE ||
-    process.env.FUNCTION_NAME ||
-    process.env.K_REVISION
-  );
-}
-
 /**
  * Run a Google Calendar API call with refresh-token recovery in local dev.
  * @param {import("google-auth-library").OAuth2Client} auth
@@ -69,7 +60,7 @@ export async function withAuthRetry(auth, fn) {
       throw error;
     }
 
-    if (isCloudFunction()) {
+    if (isCloudRuntime()) {
       throw new Error(
         "Google OAuth refresh token has expired or been revoked. " +
           "The refresh token stored in GOOGLE_TOKEN environment variable is no longer valid. " +

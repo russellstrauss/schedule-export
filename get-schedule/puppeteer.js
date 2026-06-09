@@ -1,16 +1,8 @@
 /** Puppeteer for local dev vs Cloud Functions (@sparticuz/chromium). */
-export async function getPuppeteer() {
-  const isCloudFunction = !!(
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    process.env.FUNCTION_TARGET ||
-    process.env.K_SERVICE ||
-    process.env.FUNCTION_NAME ||
-    process.env.K_REVISION ||
-    (process.env.HOME && process.env.HOME.includes("www-data-home")) ||
-    (process.env.PWD && process.env.PWD.includes("www-data-home"))
-  );
+import { isCloudRuntime } from "./runtime-env.js";
 
-  if (isCloudFunction) {
+export async function getPuppeteer() {
+  if (isCloudRuntime()) {
     try {
       const chromiumModule = await import("@sparticuz/chromium");
       const puppeteerCore = await import("puppeteer-core");
