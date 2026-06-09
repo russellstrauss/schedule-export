@@ -16,6 +16,7 @@
         "test:run": "vitest run --config tests/vitest.config.js",
         "test:integration": "node tests/run-integration-tests.js",
         "bootstrap:iatse927": "node scripts/bootstrap-iatse927-thread.js",
+        "list:iatse927": "node scripts/list-iatse927.js",
         "sync:iatse927": "node scripts/sync-iatse927.js"
     },
     "dependencies": {

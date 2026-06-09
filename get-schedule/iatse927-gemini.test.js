@@ -174,6 +174,10 @@ describe("extractScheduleEntriesWithGemini", () => {
 
     expect(entries[0].evidenceIndices).toEqual([0, 1]);
 
+    expect(entries[0].sourceText).toBe(SAMPLE_REMINDER_SMS);
+
+    expect(entries[1].sourceText).toBe(SAMPLE_REMINDER_SMS);
+
   });
 
 });

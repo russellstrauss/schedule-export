@@ -32,19 +32,34 @@ export async function syncSchedule(req, res) {
         return;
       }
 
-      const { ingestIatse927 } = await import("./get-schedule/ingest-iatse927.js");
+      const { storeIatse927Message, syncIatse927AfterIngest } = await import(
+        "./get-schedule/ingest-iatse927.js"
+      );
       const payload = body && typeof body === "object" ? body : {};
-      console.log("📱 Starting IATSE 927 ingest...");
-      const result = await ingestIatse927(payload);
-      console.log("✅ IATSE 927 ingest completed.");
+      console.log("📱 Starting IATSE 927 ingest (store)...");
+      const result = await storeIatse927Message(payload);
 
       res.status(200).json({
         success: true,
-        message: "IATSE 927 ingest completed successfully",
-        warnings: result.warnings ?? [],
-        ...result,
+        message: "IATSE 927 message stored; calendar sync running in background",
+        stored: result.stored,
+        id: result.id,
+        syncing: true,
         timestamp: new Date().toISOString()
       });
+
+      try {
+        const syncResult = await syncIatse927AfterIngest();
+        if (!syncResult) {
+          console.warn("⚠️  IATSE 927 background sync skipped (check GEMINI_API_KEY / Firestore)");
+        } else {
+          console.log(
+            `✅ IATSE 927 background sync complete: parsed=${syncResult.parsed}, synced=${syncResult.synced}`
+          );
+        }
+      } catch (err) {
+        console.error("❌ IATSE 927 background sync failed:", err);
+      }
     } catch (err) {
       console.error("❌ IATSE ingest failed:", err);
       res.status(err.message?.includes("requires") ? 400 : 500).json({

@@ -112,10 +112,11 @@ export async function trySyncIatse927FromStore() {
 }
 
 /**
+ * Store one SMS in Firestore (fast path — no Gemini/calendar).
  * @param {{ text?: string; messageId?: string }} body
- * @returns {Promise<{ stored: boolean; parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] }>}
+ * @returns {Promise<{ stored: boolean; id: string }>}
  */
-export async function ingestIatse927(body) {
+export async function storeIatse927Message(body) {
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text) {
     throw new Error("Ingest requires non-empty text");
@@ -124,9 +125,10 @@ export async function ingestIatse927(body) {
   const messageId =
     typeof body.messageId === "string" ? body.messageId.trim() : undefined;
 
-  let appended;
   try {
-    ({ appended } = await appendMessage(text, { messageId }));
+    const { appended, id } = await appendMessage(text, { messageId });
+    console.log(`ℹ️  [${sourceId}] Message stored: appended=${appended}, id=${id}`);
+    return { stored: appended, id };
   } catch (err) {
     if (isFirestoreNotFoundError(err)) {
       throw new Error(
@@ -135,18 +137,20 @@ export async function ingestIatse927(body) {
     }
     throw err;
   }
+}
 
-  const messages = await loadAllMessages();
-  const { parsed, synced, warnings } = await syncIatse927FromMessages(messages);
+/**
+ * @param {{ text?: string; messageId?: string }} body
+ * @returns {Promise<{ stored: boolean; id: string }>}
+ */
+export async function ingestIatse927(body) {
+  return storeIatse927Message(body);
+}
 
-  console.log(
-    `ℹ️  [${sourceId}] Ingest complete: stored=${appended}, synced=${synced}`
-  );
-
-  return {
-    stored: appended,
-    parsed,
-    synced,
-    warnings
-  };
+/**
+ * Re-parse Firestore messages and sync calendar (run after ingest response is sent).
+ * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null>}
+ */
+export async function syncIatse927AfterIngest() {
+  return trySyncIatse927FromStore();
 }

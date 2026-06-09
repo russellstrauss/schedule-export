@@ -1,5 +1,10 @@
 // Utility functions for schedule processing - extracted for testability
 
+import {
+  buildIatse927EventDescription,
+  resolveIatse927EventLocation
+} from "./iatse927-event-description.js";
+
 /**
  * Pad a number with leading zeros
  */
@@ -324,13 +329,16 @@ export const toGoogleEvent = (entry, options = {}) => {
     const isCalled = entry.status?.toLowerCase() === "called";
     const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
     summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
-  } else if (source === "iatse927" && entry.type) {
-    summary = `${formattedTime} (${entry.type}) ${entry.show}`;
   } else {
     summary = `${formattedTime} ${entry.show}`;
   }
 
-  let description = [entry.details, entry.notes].filter(Boolean).join(" | ");
+  let description;
+  if (source === "iatse927") {
+    description = buildIatse927EventDescription(entry);
+  } else {
+    description = [entry.details, entry.notes].filter(Boolean).join(" | ");
+  }
   if (entry.venueLink && entry.venueLink.trim()) {
     description = description
       ? `${description}\n\nVenue: ${entry.venueLink}`
@@ -339,7 +347,10 @@ export const toGoogleEvent = (entry, options = {}) => {
 
   return {
     summary,
-    location: [entry.venue, entry.location].filter(Boolean).join(" - "),
+    location:
+      source === "iatse927"
+        ? resolveIatse927EventLocation(entry)
+        : [entry.venue, entry.location].filter(Boolean).join(" - "),
     description,
     start: startStr,
     end: endStr,

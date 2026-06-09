@@ -63,29 +63,17 @@ describe("ingestIatse927", () => {
     await expect(ingestIatse927({ text: "" })).rejects.toThrow(/non-empty text/);
   });
 
-  it("stores, resolves entries, purges orphaned future events, syncs, and returns warnings", async () => {
+  it("stores message in Firestore without running Gemini or calendar sync", async () => {
     const result = await ingestIatse927({
       text: SAMPLE_REMINDER_SMS
     });
 
-    expect(appendMessage).toHaveBeenCalled();
-    expect(resolveScheduleEntriesWithValidation).toHaveBeenCalled();
-    expect(purgeOrphanedSourceEvents).toHaveBeenCalledWith(
-      expect.anything(),
-      "iatse927",
-      expect.arrayContaining([
-        expect.stringContaining("Charlie Puth")
-      ])
-    );
-    expect(addEvent).toHaveBeenCalled();
-
-    const eventArg = vi.mocked(addEvent).mock.calls[0]?.[1];
-    expect(eventArg?.location).toContain("4469 Stella Dr");
-    expect(eventArg?.summary).toMatch(/Charlie Puth/i);
-
-    expect(result.parsed).toBe(1);
-    expect(result.warnings).toEqual([]);
-    expect(result.synced).toBe(1);
+    expect(appendMessage).toHaveBeenCalledWith(SAMPLE_REMINDER_SMS, {});
+    expect(resolveScheduleEntriesWithValidation).not.toHaveBeenCalled();
+    expect(purgeOrphanedSourceEvents).not.toHaveBeenCalled();
+    expect(addEvent).not.toHaveBeenCalled();
+    expect(result.stored).toBe(true);
+    expect(result.id).toBe("doc1");
   });
 });
 

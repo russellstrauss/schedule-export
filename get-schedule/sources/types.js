@@ -13,6 +13,7 @@
  * @property {string} [client]
  * @property {string} [details]
  * @property {string} [notes]
+ * @property {string} [sourceText] - Verbatim dispatch/reminder SMS matched to this shift
  * @property {boolean} [isCallCancelled]
  * @property {string} [venueLink]
  * @property {number[]} [evidenceIndices]

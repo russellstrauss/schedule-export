@@ -263,7 +263,29 @@ describe('toGoogleEvent', () => {
     expect(result.source).toBe('crewOne');
   });
 
-  it('includes shift type in IATSE summaries', () => {
+  it('builds IATSE description with line breaks and Load In Address label', () => {
+    const entry = {
+      date: '6/3/2026',
+      callTime: '10:30',
+      show: 'Charlie Puth',
+      venue: 'Chastain Amphitheater',
+      location: '4469 Stella Dr Atlanta Georgia 30342',
+      position: '',
+      type: 'Load In',
+      status: 'confirmed',
+      details: 'Parking: first come first serve',
+      sourceText: 'This is your reminder for 6/3 Charlie Puth...'
+    };
+
+    const result = toGoogleEvent(entry, { source: 'iatse927' });
+
+    expect(result.description).toContain('Show: Charlie Puth\nCall: Load In at 10:30 AM\nVenue: Chastain Amphitheater\nLoad In Address:');
+    expect(result.description).toContain('Parking: first come first serve');
+    expect(result.description).toContain('Original message:');
+    expect(result.location).toBe('4469 Stella Dr Atlanta Georgia 30342');
+  });
+
+  it('does not include Load In/Load Out type in IATSE summaries', () => {
     const entry = {
       date: '6/3/2026',
       callTime: '22:00',
@@ -277,7 +299,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'iatse927' });
 
-    expect(result.summary).toBe('9:30pm (Load Out) Charlie Puth');
+    expect(result.summary).toBe('9:30pm Charlie Puth');
   });
 
   it('should handle "called" status with UNCONFIRMED prefix', () => {

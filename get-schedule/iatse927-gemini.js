@@ -20,6 +20,8 @@ import { buildGeminiContextPayload } from "./iatse927-message-context.js";
 
 import { sortScheduleEntriesChronologically } from "./utils.js";
 
+import { enrichIatse927Entries } from "./iatse927-entry-enrichment.js";
+
 
 
 const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -56,9 +58,23 @@ const ENTRY_SCHEMA = {
 
     status: { type: "string" },
 
-    details: { type: "string" },
+    details: {
 
-    notes: { type: "string" },
+      type: "string",
+
+      description:
+
+        "Supplemental reminder facts only: Parking, Steward, Notes (one labeled line each). Do not repeat Show, Call, Venue, or Address here — those come from other fields. Leave empty if none."
+
+    },
+
+    notes: {
+
+      type: "string",
+
+      description: "Deprecated — leave empty; put Parking, Steward, Notes in details only"
+
+    },
 
     confidence: { type: "string", enum: ["high", "medium", "low"] },
 
@@ -161,6 +177,10 @@ Extraction rules:
 - type must be "Load In", "Load Out", or "Call".
 
 - Merge reminder details onto every entry for that date/show (both Load In and Load Out).
+
+- Populate details with ONLY supplemental lines from the reminder: Parking, Steward, Notes (one fact per line, e.g. \"Parking: first come first serve\"). Do not put Show, Call, Venue, or Address in details — those are separate fields. Leave notes empty.
+
+- venue is the venue name (same for load-in and load-out on the same show/date). location is the street address for THIS entry only — use the load-in address on Load In entries and the load-out address on Load Out entries when the reminder gives different addresses; otherwise use the shared address. Leave location empty when no street address is given.
 
 - Cross-thread: Shawn scheduling + Tyler reminders may interleave; use receivedAt order.
 
@@ -523,6 +543,8 @@ async function extractAndVerifyWithGemini(messages) {
   let entries = normalizeGeminiEntries(parsed.entries ?? parsed);
 
   entries = expandDualTimeCallEntries(entries, messages);
+
+  entries = enrichIatse927Entries(entries, messages);
 
   entries = sortScheduleEntriesChronologically(entries);
 
