@@ -8,7 +8,7 @@ import {
 /**
  * Pad a number with leading zeros
  */
-export const pad = (num) => num.toString().padStart(2, "0");
+export const pad = (num) => (num ?? 0).toString().padStart(2, "0");
 
 /**
  * @param {import("./sources/types.js").ScheduleEntry} entry
@@ -30,7 +30,7 @@ export function sortScheduleEntriesChronologically(entries) {
  * Format time for event title: "08:00" -> "8am", "19:00" -> "7pm", "12:00" -> "12pm"
  */
 export const formatTimeForTitle = (timeStr) => {
-	const [hours, minutes] = timeStr.split(":").map(Number);
+	const [hours, minutes = 0] = (timeStr || "0:00").split(":").map(Number);
 	let hour12 = hours % 12;
 	if (hour12 === 0) hour12 = 12; // 0 and 12 both become 12
 	const ampm = hours < 12 ? "am" : "pm";
@@ -92,10 +92,87 @@ export const CALL_CANCELLED_LABEL = "Call Cancelled";
  * @param {string} callTimeStr
  */
 export function parseScheduleDateParts(dateStr, callTimeStr) {
-  const [month, day, year] = dateStr.split("/").map(Number);
-  const timeToken = (callTimeStr || "").trim().split(/\s+/)[0] || "0:00";
-  const [hours, minutes] = timeToken.split(":").map((part) => parseInt(part, 10) || 0);
+  const [month, day, year] = (dateStr || "").split("/").map(Number);
+  const tokens = (callTimeStr || "").trim().split(/\s+/);
+  const timeToken = tokens[0] || "0:00";
+  const timeParts = timeToken.split(":").map((part) => parseInt(part, 10) || 0);
+  let hours = timeParts[0] ?? 0;
+  let minutes = timeParts[1] ?? 0;
+  const ampm = tokens[1]?.toUpperCase();
+  if (ampm === "PM" && hours < 12) hours += 12;
+  if (ampm === "AM" && hours === 12) hours = 0;
   return { year, month, day, hours, minutes };
+}
+
+/** @param {string} dateStr */
+export function normalizeScheduleDate(dateStr) {
+  const { year, month, day } = parseScheduleDateParts(dateStr, "0:00");
+  return `${month}/${day}/${year}`;
+}
+
+/** @param {string} callTimeStr */
+export function normalizeScheduleCallTime(callTimeStr) {
+  const { hours, minutes } = parseScheduleDateParts("1/1/2000", callTimeStr);
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+/**
+ * Canonical row id for matching portal rows to calendar events.
+ * Handles legacy ids that included location (7 parts).
+ * @param {string} rowId
+ */
+export function normalizeScheduleRowId(rowId) {
+  if (!rowId) return rowId;
+  const parts = rowId.split(" | ");
+  let date;
+  let callTime;
+  let show;
+  let venue;
+  let position;
+  let type;
+  if (parts.length >= 7) {
+    [date, callTime, show, venue, , position, type] = parts;
+  } else if (parts.length >= 6) {
+    [date, callTime, show, venue, position, type] = parts;
+  } else if (parts.length >= 4) {
+    [date, callTime, show, venue] = parts;
+    return [
+      normalizeScheduleDate(date),
+      normalizeScheduleCallTime(callTime),
+      (show ?? "").replace(/\s+/g, " ").trim(),
+      (venue ?? "").replace(/\s+/g, " ").trim()
+    ].join(" | ");
+  } else {
+    return rowId;
+  }
+  return [
+    normalizeScheduleDate(date),
+    normalizeScheduleCallTime(callTime),
+    (show ?? "").replace(/\s+/g, " ").trim(),
+    (venue ?? "").replace(/\s+/g, " ").trim(),
+    (position ?? "").trim(),
+    (type ?? "").trim()
+  ].join(" | ");
+}
+
+/**
+ * Crew One dashboard-stable match key (date, call time, show, venue).
+ * Detail-page position/type can change between syncs and must not affect identity.
+ * @param {string} rowId
+ */
+export function crewOneRowMatchKey(rowId) {
+  const normalized = normalizeScheduleRowId(rowId);
+  const parts = normalized.split(" | ");
+  if (parts.length < 4) return normalized;
+  return parts.slice(0, 4).join(" | ");
+}
+
+/** @param {string} rowId @param {string} [timezone] */
+export function isFutureCallFromRowId(rowId, timezone = "America/New_York") {
+  const parts = rowId.split(" | ");
+  if (parts.length < 2) return false;
+  const { year, month, day, hours, minutes } = parseScheduleDateParts(parts[0], parts[1]);
+  return isEventInFuture(year, month, day, hours, minutes, timezone);
 }
 
 /**
@@ -103,14 +180,21 @@ export function parseScheduleDateParts(dateStr, callTimeStr) {
  * @param {import("./sources/types.js").ScheduleEntry} entry
  */
 export function scheduleRowId(entry) {
-  return [
-    entry.date,
-    entry.callTime,
-    entry.show,
-    entry.venue,
-    entry.position,
-    entry.type
-  ].join(" | ");
+  if (entry.source === "crewOne") {
+    return crewOneRowMatchKey(
+      [entry.date, entry.callTime, entry.show, entry.venue].join(" | ")
+    );
+  }
+  return normalizeScheduleRowId(
+    [
+      entry.date,
+      entry.callTime,
+      entry.show,
+      entry.venue,
+      entry.position,
+      entry.type
+    ].join(" | ")
+  );
 }
 
 /**

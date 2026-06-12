@@ -159,4 +159,40 @@ describe("purgeOrphanedSourceEvents", () => {
 
     expect(mockDelete).not.toHaveBeenCalled();
   });
+
+  it("keeps events when portal callTime format differs from stored rowId", async () => {
+    const storedRowId = "6/12/2026 | 05:00 | TEST SHOW | Arena | SH | IN";
+    const kept = {
+      id: "evt-keep",
+      extendedProperties: {
+        private: { scheduleSource: "rhino", scheduleRowId: storedRowId }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [kept] } });
+
+    await purgeOrphanedSourceEvents({}, "rhino", [
+      "6/12/2026 | 5:00 AM | TEST SHOW | Arena | SH | IN"
+    ]);
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it("keeps crewOne events when stored rowId includes detail-only position/type", async () => {
+    const storedRowId =
+      "6/12/2026 | 08:00 | CONCERT | State Farm Arena | STAGEHAND | CONCERT";
+    const kept = {
+      id: "evt-crewone",
+      summary: "8am CONCERT",
+      extendedProperties: {
+        private: { scheduleSource: "crewOne", scheduleRowId: storedRowId }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [kept] } });
+
+    await purgeOrphanedSourceEvents({}, "crewOne", [
+      "6/12/2026 | 08:00 | CONCERT | State Farm Arena"
+    ]);
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
 });

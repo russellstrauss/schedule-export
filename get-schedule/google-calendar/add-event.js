@@ -1,6 +1,7 @@
 ﻿// get-schedule/google-calendar/add-event.js
 import crypto from "crypto";
 import { google } from "googleapis";
+import { normalizeScheduleRowId, crewOneRowMatchKey, isFutureCallFromRowId } from "../utils.js";
 
 /** Configuration */
 const DEFAULT_TIMEZONE = "America/New_York";
@@ -111,6 +112,19 @@ export async function syncEvent(auth, event) {
 		}
 	}
 
+	if (source === "crewOne") {
+		const matchKey = crewOneRowMatchKey(event.rowId);
+		const existing = await findCrewOneEventByMatchKey(calendar, source, matchKey);
+		if (existing?.id) {
+			const res = await calendar.events.update({
+				calendarId: "primary",
+				eventId: existing.id,
+				requestBody
+			});
+			return { action: "updated", event: res.data };
+		}
+	}
+
 	try {
 		const insertBody = { ...requestBody, id: newEventId };
 		const res = await calendar.events.insert({
@@ -157,6 +171,37 @@ async function listSourceEvents(calendar, source, timeMin) {
 	} while (pageToken);
 
 	return sourceEvents;
+}
+
+/**
+ * @param {import("googleapis").calendar_v3.Calendar} calendar
+ * @param {string} source
+ * @param {string} matchKey
+ */
+async function findCrewOneEventByMatchKey(calendar, source, matchKey) {
+	const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+	const sourceEvents = await listSourceEvents(calendar, source, timeMin);
+	return (
+		sourceEvents.find((ev) => {
+			const rowId = rowIdFromEvent(ev, source);
+			return rowId && crewOneRowMatchKey(rowId) === matchKey;
+		}) || null
+	);
+}
+
+/**
+ * @param {string} source
+ * @param {string} rowId
+ * @param {Set<string>} activeSet
+ * @param {Set<string> | null} crewOneMatchKeys
+ */
+function isRowIdStillActive(source, rowId, activeSet, crewOneMatchKeys) {
+	const normalized = normalizeScheduleRowId(rowId);
+	if (activeSet.has(normalized)) return true;
+	if (source === "crewOne" && crewOneMatchKeys?.has(crewOneRowMatchKey(rowId))) {
+		return true;
+	}
+	return false;
 }
 
 /**
@@ -222,7 +267,9 @@ export async function purgeSourceEvents(auth, source, options = {}) {
  */
 export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, options = {}) {
 	const futureOnly = options.futureOnly !== false;
-	const activeSet = new Set(activeRowIds);
+	const activeSet = new Set(activeRowIds.map(normalizeScheduleRowId));
+	const crewOneMatchKeys =
+		source === "crewOne" ? new Set(activeRowIds.map(crewOneRowMatchKey)) : null;
 	const calendar = google.calendar({ version: "v3", auth });
 	const timeMin = futureOnly
 		? new Date().toISOString()
@@ -235,7 +282,14 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 	for (const ev of sourceEvents) {
 		const rowId = rowIdFromEvent(ev, source);
 		if (!rowId) continue;
-		if (activeSet.has(rowId)) continue;
+		if (isRowIdStillActive(source, rowId, activeSet, crewOneMatchKeys)) continue;
+		if (
+			source === "crewOne" &&
+			isFutureCallFromRowId(rowId) &&
+			!/(cancelled|canceled)/i.test(ev.summary || "")
+		) {
+			continue;
+		}
 		await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
 	}
 }

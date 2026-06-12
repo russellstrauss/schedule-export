@@ -10,7 +10,11 @@ import {
   pad,
   isEventInFuture,
   logAndMapEvents,
-  sortScheduleEntriesChronologically
+  sortScheduleEntriesChronologically,
+  scheduleRowId,
+  normalizeScheduleRowId,
+  crewOneRowMatchKey,
+  parseScheduleDateParts
 } from './utils.js';
 
 describe('sortScheduleEntriesChronologically', () => {
@@ -501,6 +505,88 @@ describe('pad', () => {
 
   it('should handle zero', () => {
     expect(pad(0)).toBe('00');
+  });
+});
+
+describe('scheduleRowId normalization', () => {
+  const entry = {
+    date: '6/12/2026',
+    callTime: '05:00',
+    show: 'TEST SHOW',
+    venue: 'Arena',
+    position: 'SH',
+    type: 'IN'
+  };
+
+  it('matches 24h and 12h call time formats', () => {
+    expect(scheduleRowId(entry)).toBe(
+      scheduleRowId({ ...entry, callTime: '5:00 AM' })
+    );
+  });
+
+  it('matches padded and unpadded dates', () => {
+    expect(scheduleRowId(entry)).toBe(
+      scheduleRowId({ ...entry, date: '06/12/2026' })
+    );
+  });
+
+  it('matches legacy row ids that included location', () => {
+    const current = scheduleRowId(entry);
+    const legacy = '6/12/2026 | 5:00 AM | TEST SHOW | Arena | Floor | SH | IN';
+    expect(normalizeScheduleRowId(legacy)).toBe(current);
+  });
+
+  it('parses PM call times', () => {
+    expect(parseScheduleDateParts('6/12/2026', '5:00 PM')).toEqual({
+      year: 2026,
+      month: 6,
+      day: 12,
+      hours: 17,
+      minutes: 0
+    });
+  });
+
+  it('handles call times without a minutes segment', () => {
+    expect(parseScheduleDateParts('6/12/2026', '08')).toEqual({
+      year: 2026,
+      month: 6,
+      day: 12,
+      hours: 8,
+      minutes: 0
+    });
+    expect(scheduleRowId({
+      date: '6/12/2026',
+      callTime: '08',
+      show: 'TEST',
+      venue: 'Arena',
+      position: 'SH',
+      type: 'IN'
+    })).toBe('6/12/2026 | 08:00 | TEST | Arena | SH | IN');
+  });
+});
+
+describe('crewOne scheduleRowId', () => {
+  const entry = {
+    source: 'crewOne',
+    date: '6/12/2026',
+    callTime: '08:00',
+    show: 'CONCERT',
+    venue: 'State Farm Arena',
+    position: 'STAGEHAND',
+    type: 'CONCERT'
+  };
+
+  it('uses dashboard fields only so detail scrape changes do not change identity', () => {
+    const withDetail = scheduleRowId(entry);
+    const withoutDetail = scheduleRowId({ ...entry, position: '', type: '' });
+    expect(withDetail).toBe(withoutDetail);
+    expect(withDetail).toBe('6/12/2026 | 08:00 | CONCERT | State Farm Arena');
+  });
+
+  it('matches legacy 6-part calendar row ids by prefix', () => {
+    const current = scheduleRowId(entry);
+    const legacy = '6/12/2026 | 08:00 | CONCERT | State Farm Arena | STAGEHAND | CONCERT';
+    expect(crewOneRowMatchKey(legacy)).toBe(current);
   });
 });
 
