@@ -14,20 +14,63 @@ const __dirname = dirname(__filename);
 const TOKEN_PATH = path.join(__dirname, "token.json");
 const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
 
+function loadLocalOAuthConfig() {
+	if (!fs.existsSync(CREDENTIALS_PATH)) {
+		throw new Error(`Credentials file not found at ${CREDENTIALS_PATH}`);
+	}
+	const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
+	const { client_secret, client_id } = credentials.installed;
+	const redirect_uri = credentials.installed.redirect_uris[0];
+	return { client_id, client_secret, redirect_uri };
+}
+
+function createOAuthClient(client_id, client_secret, redirect_uri) {
+	return new google.auth.OAuth2(client_id, client_secret, redirect_uri);
+}
+
+/**
+ * Exchange an OAuth authorization code for tokens and save token.json locally.
+ * @param {string} code
+ */
+export async function exchangeOAuthCode(code) {
+	const { client_id, client_secret, redirect_uri } = loadLocalOAuthConfig();
+	const oAuth2Client = createOAuthClient(client_id, client_secret, redirect_uri);
+	const { tokens } = await oAuth2Client.getToken(code);
+	oAuth2Client.setCredentials(tokens);
+	fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+	console.log("Authentication successful! Token saved to token.json");
+	return oAuth2Client;
+}
+
 async function listenForCode(oAuth2Client, authUrl, redirectUri) {
 	return new Promise((resolve, reject) => {
 		const urlObj = new URL(redirectUri);
-		const port = urlObj.port || (urlObj.protocol === "https:" ? 443 : 80);
-		const host = urlObj.hostname || "localhost";
-		
+		const port = Number(urlObj.port) || (urlObj.protocol === "https:" ? 443 : 80);
+		// Bind IPv4 explicitly — "localhost" on Windows often uses ::1 only, which
+		// misses browser redirects that land on 127.0.0.1 (or vice versa).
+		const host = urlObj.hostname === "localhost" ? "127.0.0.1" : (urlObj.hostname || "127.0.0.1");
+
 		const server = http.createServer(async (req, res) => {
 			const url = new URL(req.url, redirectUri);
 			const code = url.searchParams.get("code");
 			res.end("Authentication successful! You can close this tab.");
 			server.destroy();
 			resolve(code);
-		}).listen(port, host, () => {
-			console.log(`Listening for OAuth callback on ${redirectUri}`);
+		});
+
+		server.on("error", (err) => {
+			if (err.code === "EADDRINUSE") {
+				reject(new Error(
+					`Port ${port} is already in use. Stop "npm start" (functions-framework) ` +
+					`or any other process on port ${port}, then run "node sync.js" again.`
+				));
+				return;
+			}
+			reject(err);
+		});
+
+		server.listen(port, host, () => {
+			console.log(`Listening for OAuth callback on http://${host}:${port}/`);
 			open(authUrl);
 		});
 		destroyer(server);
@@ -112,10 +155,7 @@ export async function authorize() {
 		});
 		console.log("Authorize this app by visiting this URL:", authUrl);
 		const code = await listenForCode(oAuth2Client, authUrl, redirect_uri);
-		const { tokens: newTokens } = await oAuth2Client.getToken(code);
-		oAuth2Client.setCredentials(newTokens);
-		fs.writeFileSync(TOKEN_PATH, JSON.stringify(newTokens));
-		return oAuth2Client;
+		return exchangeOAuthCode(code);
 	} else {
 		throw new Error("Missing GOOGLE_TOKEN environment variable. Run locally to authorize first and then set GOOGLE_TOKEN to the token JSON string.");
 	}

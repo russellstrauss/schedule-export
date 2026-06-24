@@ -13,6 +13,20 @@ describe("isFirestoreCredentialsError", () => {
       isFirestoreCredentialsError(new Error("Could not load the default credentials"))
     ).toBe(true);
   });
+
+  it("detects nested credential errors", () => {
+    const err = new Error("wrapper");
+    err.cause = new Error("Could not load the default credentials");
+    expect(isFirestoreCredentialsError(err)).toBe(true);
+  });
+
+  it("detects gcloud REST auth failures", () => {
+    expect(
+      isFirestoreCredentialsError(
+        new Error("Firestore auth failed. Run: gcloud auth login && gcloud auth application-default login")
+      )
+    ).toBe(true);
+  });
 });
 
 describe("isFirestoreProjectIdError", () => {

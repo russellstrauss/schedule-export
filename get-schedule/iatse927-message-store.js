@@ -4,6 +4,7 @@ import {
   getFirestoreProjectId,
   getGcloudAccessToken,
   isFirestoreCredentialsError,
+  shouldPreferFirestoreRest,
   firestoreStringValue,
   firestoreTimestampValue
 } from "./iatse927-firestore-auth.js";
@@ -173,6 +174,21 @@ export async function bulkAppendMessages(messages) {
 export async function loadAllMessages() {
   if (useRestClient === true) {
     return loadAllMessagesViaRest();
+  }
+
+  // Locally, prefer gcloud REST (user login) over Firestore SDK (ADC file).
+  if (shouldPreferFirestoreRest()) {
+    try {
+      const messages = await loadAllMessagesViaRest();
+      useRestClient = true;
+      db = null;
+      return messages;
+    } catch (err) {
+      if (isFirestoreCredentialsError(err) || isFirestoreNotFoundError(err)) {
+        throw err;
+      }
+      console.warn("⚠️  [iatse927] Firestore REST failed locally; trying Firestore SDK");
+    }
   }
 
   try {

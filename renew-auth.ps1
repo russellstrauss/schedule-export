@@ -183,7 +183,7 @@ Write-Host "   (A browser window will open for authentication)" -ForegroundColor
 Write-Host ""
 
 try {
-    node sync.js
+    node scripts/authorize-calendar.js
     Write-Host ""
     Write-Host "Authentication successful!" -ForegroundColor Green
 } catch {

@@ -4,10 +4,11 @@ This guide will help you deploy your schedule sync script to Google Cloud Functi
 
 ## Prerequisites
 
-1. **Google Cloud Project**: You need a Google Cloud project with billing enabled
-2. **gcloud CLI**: Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-3. **Authentication**: Run `gcloud auth login` and `gcloud auth application-default login`
-4. **APIs Enabled**: Enable the following APIs:
+1. **Node.js 24**: Install locally for development and testing (see `.nvmrc`). Production deploys use the `nodejs24` Cloud Functions runtime.
+2. **Google Cloud Project**: You need a Google Cloud project with billing enabled
+3. **gcloud CLI**: Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+4. **Authentication**: Run `gcloud auth login` and `gcloud auth application-default login`
+5. **APIs Enabled**: Enable the following APIs:
    - Cloud Functions API
    - Cloud Scheduler API
    - Cloud Build API
@@ -170,7 +171,7 @@ Or manually:
 ```bash
 gcloud functions deploy sync-schedule \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs24 \
   --region=us-central1 \
   --source=. \
   --entry-point=syncSchedule \

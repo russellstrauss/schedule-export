@@ -80,7 +80,7 @@ echo ""
 echo "Step 3: Deploying Cloud Function..."
 gcloud functions deploy $FUNCTION_NAME \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs24 \
   --region=$REGION \
   --source=. \
   --entry-point=syncSchedule \
