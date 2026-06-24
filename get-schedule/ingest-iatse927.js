@@ -21,7 +21,11 @@ export async function syncIatse927FromMessages(messages) {
   console.log(`🌐 Fetching schedule from ${sourceId}...`);
   const { entries, warnings } = await resolveScheduleEntriesWithValidation(messages);
   const validEntries = entries.filter((entry) => !isEventCancelled(entry));
+  const cancelledEntries = entries.filter((entry) => isEventCancelled(entry));
   const activeRowIds = validEntries.map((entry) =>
+    scheduleRowId({ ...entry, source: sourceId })
+  );
+  const cancelledRowIds = cancelledEntries.map((entry) =>
     scheduleRowId({ ...entry, source: sourceId })
   );
   const googleEvents = logAndMapEvents(entries, sourceId, {
@@ -29,10 +33,17 @@ export async function syncIatse927FromMessages(messages) {
     timezone: DEFAULT_TIMEZONE
   });
 
+  // Nothing upcoming to sync (no messages, or all parsed events are in the past).
+  // Skip auth/purge to avoid touching the calendar when there's nothing to sync.
+  if (googleEvents.length === 0) {
+    console.warn("No currently scheduled events.");
+    return { parsed: entries.length, synced: 0, warnings };
+  }
+
   let auth = await authorize();
 
   auth = await withAuthRetry(auth, async (a) => {
-    await purgeOrphanedSourceEvents(a, sourceId, activeRowIds);
+    await purgeOrphanedSourceEvents(a, sourceId, activeRowIds, { cancelledRowIds });
     return a;
   });
 

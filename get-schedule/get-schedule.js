@@ -39,7 +39,7 @@ function getRunnablePortalSourceIds(enabledIds) {
  * @param {string[]} portalSourceIds
  */
 async function syncPortalSources(browser, portalSourceIds) {
-  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; activeRowIds: string[] }>} */
+  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; activeRowIds: string[]; cancelledRowIds: string[] }>} */
   const syncPlanBySource = new Map();
 
   for (const sourceId of portalSourceIds) {
@@ -49,11 +49,20 @@ async function syncPortalSources(browser, portalSourceIds) {
     try {
       const entries = await source.fetchSchedule(page);
       const validEntries = entries.filter((entry) => !isEventCancelled(entry));
+      const cancelledEntries = entries.filter((entry) => isEventCancelled(entry));
       const activeRowIds = validEntries.map((entry) => scheduleRowId(entry));
+      const cancelledRowIds = cancelledEntries.map((entry) => scheduleRowId(entry));
       syncPlanBySource.set(sourceId, {
         googleEvents: filterAndMapEvents(entries, sourceId),
-        activeRowIds
+        activeRowIds,
+        cancelledRowIds
       });
+    } catch (err) {
+      // Isolate per-source failures so one portal source (e.g. a timeout or a
+      // login interstitial) doesn't discard schedules already fetched from
+      // other sources.
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`⚠️  [${sourceId}] skipped: ${message}`);
     } finally {
       await page.close();
     }
@@ -68,9 +77,12 @@ async function syncPortalSources(browser, portalSourceIds) {
 
   let auth = await authorize();
 
-  for (const [sourceId, { googleEvents, activeRowIds }] of syncPlanBySource) {
+  for (const [sourceId, { googleEvents, activeRowIds, cancelledRowIds }] of syncPlanBySource) {
+    // CrewOne's dashboard is a complete snapshot of all upcoming calls, so a call
+    // that's no longer listed has been taken off the schedule and should be removed.
+    const removeAbsent = sourceId === "crewOne";
     auth = await withAuthRetry(auth, async (a) => {
-      await purgeOrphanedSourceEvents(a, sourceId, activeRowIds);
+      await purgeOrphanedSourceEvents(a, sourceId, activeRowIds, { cancelledRowIds, removeAbsent });
       return a;
     });
 

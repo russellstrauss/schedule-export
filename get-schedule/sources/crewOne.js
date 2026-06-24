@@ -104,11 +104,59 @@ async function loginAndOpenDashboard(page, creds) {
     btn?.click();
   });
 
-  await page.waitForFunction(
-    () => window.location.pathname.includes("dashboard"),
-    { timeout: 60000 }
-  );
+  // Wait for the post-login redirect to settle on any authenticated route
+  // (not the login page). The portal may redirect to an interstitial instead
+  // of the dashboard, so don't wait specifically for "dashboard" here.
+  await page
+    .waitForFunction(
+      () => {
+        const p = window.location.pathname;
+        return p !== "/" && !/login/i.test(p);
+      },
+      { timeout: 30000 }
+    )
+    .catch(() => {});
   await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
+
+  const pathname = new URL(page.url()).pathname;
+  if (!pathname.includes("dashboard")) {
+    if (/bgcheck/i.test(pathname)) {
+      throw new Error(
+        `Crew One is blocking the dashboard behind a Background Check Consent. ` +
+          `Log in at ${creds.loginUrl}, complete the consent flow, then re-run the sync. ` +
+          `(stuck on ${pathname})`
+      );
+    }
+    throw new Error(
+      `Crew One did not reach the dashboard after login (landed on "${pathname}"). ` +
+        `Check the CREWONE_EMAIL/CREWONE_PASSWORD credentials and complete any pending ` +
+        `prompts at ${creds.loginUrl}.`
+    );
+  }
+
+  // Confirm the dashboard widgets actually rendered. The "Upcoming Calls" section is
+  // omitted entirely when there are no upcoming calls, so we can't rely on it to
+  // detect a successful load. Other dashboard sections always render once logged in;
+  // requiring one of them lets an empty "Upcoming Calls" be trusted as authoritative
+  // (genuinely no calls) rather than a half-loaded page.
+  const dashboardReady = await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].some((h) =>
+          /Upcoming Calls|Events Worked|Most Recent Payments|Offers Needing Your Response/i.test(
+            h.textContent || ""
+          )
+        ),
+      { timeout: 15000 }
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  if (!dashboardReady) {
+    throw new Error(
+      "Crew One dashboard did not finish loading (no recognizable dashboard sections found)."
+    );
+  }
 }
 
 /**

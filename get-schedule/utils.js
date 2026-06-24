@@ -87,6 +87,18 @@ export const normalizeTextForMatch = (value) => {
 export const CALL_CANCELLED_LABEL = "Call Cancelled";
 
 /**
+ * Strip a leading "CANCELLED"/"CANCELED" marker that Rhino prepends to the show
+ * name of a cancelled call. The marker is not part of the call's identity, so it
+ * must be removed before building/matching row ids (otherwise a cancelled row can
+ * never match the originally-synced calendar event).
+ * @param {string} show
+ */
+export function stripCancelledShowPrefix(show) {
+  if (!show) return show;
+  return show.replace(/^\s*cancell?ed\b[\s:.,\u2013-]*/i, "").trim();
+}
+
+/**
  * Parse MM/DD/YYYY date and HH:mm call time from a schedule entry.
  * @param {string} dateStr
  * @param {string} callTimeStr
@@ -130,6 +142,7 @@ export function normalizeScheduleRowId(rowId) {
   let venue;
   let position;
   let type;
+  const normShow = (s) => stripCancelledShowPrefix((s ?? "").replace(/\s+/g, " ").trim());
   if (parts.length >= 7) {
     [date, callTime, show, venue, , position, type] = parts;
   } else if (parts.length >= 6) {
@@ -139,7 +152,7 @@ export function normalizeScheduleRowId(rowId) {
     return [
       normalizeScheduleDate(date),
       normalizeScheduleCallTime(callTime),
-      (show ?? "").replace(/\s+/g, " ").trim(),
+      normShow(show),
       (venue ?? "").replace(/\s+/g, " ").trim()
     ].join(" | ");
   } else {
@@ -148,7 +161,7 @@ export function normalizeScheduleRowId(rowId) {
   return [
     normalizeScheduleDate(date),
     normalizeScheduleCallTime(callTime),
-    (show ?? "").replace(/\s+/g, " ").trim(),
+    normShow(show),
     (venue ?? "").replace(/\s+/g, " ").trim(),
     (position ?? "").trim(),
     (type ?? "").trim()
@@ -165,6 +178,21 @@ export function crewOneRowMatchKey(rowId) {
   const parts = normalized.split(" | ");
   if (parts.length < 4) return normalized;
   return parts.slice(0, 4).join(" | ");
+}
+
+/**
+ * Rhino cancellation match key: identity without the call time, which Rhino
+ * sometimes drifts by a minute when a call is cancelled/edited. Used only for
+ * matching cancelled rows during purge — active events are matched exactly first,
+ * so relaxing the cancelled match can never delete a still-active call.
+ * @param {string} rowId
+ */
+export function rhinoRowMatchKey(rowId) {
+  const normalized = normalizeScheduleRowId(rowId);
+  const parts = normalized.split(" | ");
+  if (parts.length < 6) return normalized;
+  // date | show | venue | position | type (drop call time at index 1)
+  return [parts[0], parts[2], parts[3], parts[4], parts[5]].join(" | ");
 }
 
 /** @param {string} rowId @param {string} [timezone] */

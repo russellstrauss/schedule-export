@@ -12,9 +12,13 @@ vi.mock("./iatse927-message-store.js", () => ({
   ])
 }));
 
+const futureDate = new Date();
+futureDate.setDate(futureDate.getDate() + 30);
+const mockEntryDate = `${futureDate.getMonth() + 1}/${futureDate.getDate()}/${futureDate.getFullYear()}`;
+
 const mockEntry = {
   source: "iatse927",
-  date: "6/15/2026",
+  date: mockEntryDate,
   callTime: "10:30",
   show: "Charlie Puth",
   venue: "Chastain Amphitheater",
@@ -108,7 +112,8 @@ describe("trySyncIatse927FromStore", () => {
     expect(purgeOrphanedSourceEvents).toHaveBeenCalledWith(
       expect.anything(),
       "iatse927",
-      expect.any(Array)
+      expect.any(Array),
+      expect.objectContaining({ cancelledRowIds: expect.any(Array) })
     );
   });
 
