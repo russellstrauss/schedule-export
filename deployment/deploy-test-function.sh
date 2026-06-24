@@ -42,7 +42,7 @@ echo "📝 Setting environment variables..."
 
 gcloud functions deploy $FUNCTION_NAME \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs24 \
   --region=$REGION \
   --source=. \
   --entry-point=runTests \

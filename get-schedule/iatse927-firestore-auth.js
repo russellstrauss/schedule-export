@@ -3,17 +3,60 @@ import { isCloudRuntime } from "./runtime-env.js";
 
 /**
  * @param {unknown} err
+ * @returns {string}
+ */
+function firestoreErrorText(err) {
+  if (!err) return "";
+  /** @type {unknown[]} */
+  const queue = [err];
+  /** @type {string[]} */
+  const parts = [];
+  const seen = new Set();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current == null || seen.has(current)) continue;
+    if (typeof current === "object") seen.add(current);
+
+    if (typeof current === "string") {
+      parts.push(current);
+      continue;
+    }
+
+    if (current instanceof Error) {
+      if (current.message) parts.push(current.message);
+      if (current.cause) queue.push(current.cause);
+      continue;
+    }
+
+    if (typeof current === "object") {
+      const row = /** @type {Record<string, unknown>} */ (current);
+      for (const key of ["message", "details", "reason", "statusDetails"]) {
+        if (typeof row[key] === "string") parts.push(row[key]);
+      }
+      if (row.cause) queue.push(row.cause);
+      if (row.error) queue.push(row.error);
+    }
+  }
+
+  return parts.join(" ");
+}
+
+/**
+ * @param {unknown} err
  * @returns {boolean}
  */
 export function isFirestoreCredentialsError(err) {
-  const message = String(err?.message || err || "");
+  const message = firestoreErrorText(err);
   return (
     message.includes("Could not load the default credentials") ||
+    message.includes("NO_ADC_FOUND") ||
     message.includes("default credentials") ||
-    message.includes("Unable to detect a Project Id")
+    message.includes("Unable to detect a Project Id") ||
+    message.includes("Firestore auth failed") ||
+    message.includes("application-default login")
   );
 }
-
 /**
  * @param {unknown} err
  * @returns {boolean}
@@ -21,6 +64,14 @@ export function isFirestoreCredentialsError(err) {
 export function isFirestoreProjectIdError(err) {
   const message = String(err?.message || err || "");
   return message.includes("Firestore project ID not found");
+}
+
+/**
+ * Local dev uses gcloud user credentials (REST). Cloud Functions use the Firestore SDK (ADC).
+ * @returns {boolean}
+ */
+export function shouldPreferFirestoreRest() {
+  return !isCloudRuntime();
 }
 
 /** Cached after first successful resolution in cloud. */

@@ -4,7 +4,8 @@ import { authorize } from "./google-calendar/auth.js";
 import { addEvent, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
 import { withAuthRetry } from "./auth-handler.js";
 import { trySyncIatse927FromStore } from "./ingest-iatse927.js";
-import { getPuppeteer } from "./puppeteer.js";
+import { isFirestoreCredentialsError } from "./iatse927-firestore-auth.js";
+import { getPuppeteer, getPortalBrowserLaunchOptions, configurePortalPage, gotoPortalPage } from "./puppeteer.js";
 import { getEnabledSourceIds, getSource } from "./sources/index.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
@@ -46,6 +47,7 @@ async function syncPortalSources(browser, portalSourceIds) {
     const source = getSource(sourceId);
     console.log(`🌐 Fetching schedule from ${sourceId}...`);
     const page = await browser.newPage();
+    await configurePortalPage(page);
     try {
       const entries = await source.fetchSchedule(page);
       const validEntries = entries.filter((entry) => !isEventCancelled(entry));
@@ -91,7 +93,7 @@ export default async function getSchedule() {
   if (portalSourceIds.length > 0) {
     try {
       const puppeteer = await getPuppeteer();
-      const browser = await puppeteer.launch({ headless: "new" });
+      const browser = await puppeteer.launch(getPortalBrowserLaunchOptions({ headless: "new" }));
       try {
         portalSourcesRan = portalSourceIds.length;
         await syncPortalSources(browser, portalSourceIds);
@@ -106,7 +108,18 @@ export default async function getSchedule() {
     console.log("ℹ️  No portal sources configured with credentials; skipping browser sync.");
   }
 
-  const iatseResult = await trySyncIatse927FromStore();
+  let iatseResult = null;
+  try {
+    iatseResult = await trySyncIatse927FromStore();
+  } catch (err) {
+    if (isFirestoreCredentialsError(err)) {
+      console.warn(
+        `⚠️  Skipping iatse927: Firestore credentials not available (${err instanceof Error ? err.message : err})`
+      );
+    } else {
+      throw err;
+    }
+  }
 
   if (portalSourcesRan === 0 && !iatseResult) {
     throw new Error(

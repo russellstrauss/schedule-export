@@ -10,9 +10,10 @@ async function main() {
     throw new Error("IATSE sync skipped (check GEMINI_API_KEY and Firestore messages)");
   }
 
-  const { synced, warnings } = result;
+  const { synced, parsed, warnings } = result;
+  console.log(`✅ IATSE sync complete: ${synced} calendar event(s) from ${parsed} parsed shift(s)`);
   if (warnings.length > 0) {
-    console.log(`ℹ️  [iatse927] Sync complete: ${synced} event(s), ${warnings.length} warning(s)`);
+    console.log(`ℹ️  [iatse927] ${warnings.length} validation warning(s)`);
   }
 }
 

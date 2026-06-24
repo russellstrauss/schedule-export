@@ -4,6 +4,8 @@ import {
   isIngestRequest,
   verifyIngestPhone
 } from "./get-schedule/request-router.js";
+import { isCloudRuntime } from "./get-schedule/runtime-env.js";
+import { exchangeOAuthCode } from "./get-schedule/google-calendar/auth.js";
 
 /**
  * Cloud Function entry point for schedule synchronization
@@ -16,6 +18,20 @@ export async function syncSchedule(req, res) {
 
   if (req.method === "OPTIONS") {
     res.status(204).send("");
+    return;
+  }
+
+  // Local OAuth redirect lands here if npm start is running on the same port as
+  // the OAuth redirect URI (http://localhost:8080). Handle it instead of starting sync.
+  const oauthCode = req.query?.code;
+  if (!isCloudRuntime() && req.method === "GET" && oauthCode) {
+    try {
+      await exchangeOAuthCode(oauthCode);
+      res.status(200).send("Authentication successful! You can close this tab.");
+    } catch (err) {
+      console.error("OAuth callback failed:", err);
+      res.status(500).send(err.message);
+    }
     return;
   }
 

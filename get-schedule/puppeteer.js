@@ -1,6 +1,49 @@
 /** Puppeteer for local dev vs Cloud Functions (@sparticuz/chromium). */
 import { isCloudRuntime } from "./runtime-env.js";
 
+/** @param {import("puppeteer").LaunchOptions} [options] */
+export function getPortalBrowserLaunchOptions(options = {}) {
+  return {
+    headless: true,
+    args: [
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-sync",
+      "--no-first-run",
+      ...(options.args || [])
+    ],
+    ...options
+  };
+}
+
+/** @param {import("puppeteer").Page} page */
+export async function configurePortalPage(page) {
+  page.setDefaultNavigationTimeout(90000);
+  page.setDefaultTimeout(90000);
+  await page.setRequestInterception(true);
+  page.on("request", (req) => {
+    const type = req.resourceType();
+    if (type === "image" || type === "stylesheet" || type === "font" || type === "media") {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+}
+
+/**
+ * @param {import("puppeteer").Page} page
+ * @param {string} url
+ */
+export async function gotoPortalPage(page, url) {
+  const opts = { waitUntil: "commit", timeout: 90000 };
+  try {
+    await page.goto(url, opts);
+  } catch {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+  }
+}
+
 export async function getPuppeteer() {
   if (isCloudRuntime()) {
     try {
@@ -46,20 +89,17 @@ export async function getPuppeteer() {
   }
 
   const puppeteer = await import("puppeteer");
-  const systemChrome =
-    process.env.PUPPETEER_EXECUTABLE_PATH ||
-    (process.platform === "win32"
-      ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-      : process.platform === "darwin"
-        ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        : "/usr/bin/google-chrome");
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
 
-  const fs = await import("fs");
-  if (fs.existsSync(systemChrome)) {
+  if (executablePath) {
+    const fs = await import("fs");
+    if (!fs.existsSync(executablePath)) {
+      throw new Error(`PUPPETEER_EXECUTABLE_PATH not found: ${executablePath}`);
+    }
     const base = puppeteer.default;
     return {
       launch: (options = {}) =>
-        base.launch({ ...options, executablePath: systemChrome })
+        base.launch({ ...getPortalBrowserLaunchOptions(options), executablePath })
     };
   }
 

@@ -180,7 +180,7 @@ echo "Starting OAuth flow..."
 echo "   (A browser window will open for authentication)"
 echo ""
 
-if ! node sync.js; then
+if ! node scripts/authorize-calendar.js; then
     echo ""
     echo "Authentication failed"
     exit 1

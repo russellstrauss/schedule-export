@@ -75,7 +75,7 @@ if ($yamlContent.Count -eq 0) {
 Write-Host "Deploying function..." -ForegroundColor Yellow
 gcloud functions deploy $FunctionName `
     --gen2 `
-    --runtime=nodejs20 `
+    --runtime=nodejs24 `
     --region=$Region `
     --source=. `
     --entry-point=runTests `

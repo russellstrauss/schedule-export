@@ -109,7 +109,7 @@ Write-Host ""
 Write-Host "Step 3: Deploying Cloud Function..." -ForegroundColor Yellow
 gcloud functions deploy $FunctionName `
 	--gen2 `
-	--runtime=nodejs20 `
+	--runtime=nodejs24 `
 	--region=$Region `
 	--source=. `
 	--entry-point=syncSchedule `
