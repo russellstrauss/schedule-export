@@ -277,6 +277,25 @@ describe("purgeOrphanedSourceEvents", () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  it("purges recently-rescheduled Rhino events if their rowId no longer exists", async () => {
+    const oldEvent = {
+      id: "evt-old",
+      extendedProperties: {
+        private: { scheduleSource: "rhino", scheduleRowId: "gone-from-portal" }
+      },
+      start: { dateTime: new Date(Date.now() - 30 * 60 * 1000).toISOString() }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [oldEvent] } });
+
+    await purgeOrphanedSourceEvents({}, "rhino", ["still-on-portal"]);
+
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith({
+      calendarId: "primary",
+      eventId: expect.any(String)
+    });
+  });
+
   it("keeps events when portal callTime format differs from stored rowId", async () => {
     const storedRowId = "6/12/2026 | 05:00 | TEST SHOW | Arena | SH | IN";
     const kept = {

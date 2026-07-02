@@ -7,6 +7,7 @@ import { normalizeScheduleRowId, crewOneRowMatchKey, rhinoRowMatchKey } from "..
 const DEFAULT_TIMEZONE = "America/New_York";
 const ID_LENGTH = 40;
 const PURGE_LOOKBACK_YEARS = 2;
+const RECENT_PAST_EVENT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 /** Build a stable, URL-safe id for a source row */
 export function deterministicIdFor(source, rowId) {
@@ -322,10 +323,10 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 
 	const calendar = google.calendar({ version: "v3", auth });
 	const timeMin = futureOnly
-		? new Date().toISOString()
+		? new Date(Date.now() - RECENT_PAST_EVENT_LOOKBACK_MS).toISOString()
 		: new Date(
-				Date.now() - PURGE_LOOKBACK_YEARS * 365.25 * 24 * 60 * 60 * 1000
-			).toISOString();
+			Date.now() - PURGE_LOOKBACK_YEARS * 365.25 * 24 * 60 * 60 * 1000
+		).toISOString();
 
 	const sourceEvents = await listSourceEvents(calendar, source, timeMin);
 
