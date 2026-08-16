@@ -18,7 +18,11 @@ import { expandDualTimeCallEntries } from "./iatse927-call-expander.js";
 
 import { buildGeminiContextPayload } from "./iatse927-message-context.js";
 
-import { sortScheduleEntriesChronologically } from "./utils.js";
+import {
+  normalizeScheduleCallTime,
+  normalizeScheduleDate,
+  sortScheduleEntriesChronologically
+} from "./utils.js";
 
 import { enrichIatse927Entries } from "./iatse927-entry-enrichment.js";
 
@@ -272,9 +276,11 @@ function normalizeGeminiEntries(raw) {
 
 
 
-    const date = typeof row.date === "string" ? row.date.trim() : "";
+    const date = typeof row.date === "string" ? normalizeScheduleDate(row.date.trim()) : "";
 
-    const callTime = typeof row.callTime === "string" ? row.callTime.trim() : "";
+    const callTime = typeof row.callTime === "string"
+      ? normalizeScheduleCallTime(row.callTime.trim())
+      : "";
 
     const show = typeof row.show === "string" ? row.show.trim() : "";
 

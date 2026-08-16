@@ -60,7 +60,7 @@ function normalizeEventBody(event) {
 		privateProps.rhinoRowId = rowId;
 	}
 
-	return {
+	const requestBody = {
 		summary: event.summary || "",
 		location: event.location || "",
 		description: event.description || "",
@@ -77,6 +77,12 @@ function normalizeEventBody(event) {
 			private: privateProps
 		}
 	};
+
+	if (event.reminders) {
+		requestBody.reminders = event.reminders;
+	}
+
+	return requestBody;
 }
 
 /**
@@ -144,6 +150,18 @@ export async function syncEvent(auth, event) {
 
 export async function addEvent(auth, event) {
 	return syncEvent(auth, event);
+}
+
+export async function purgeCrewOneDeadlineReminderEvents(auth) {
+	const calendar = google.calendar({ version: "v3", auth });
+	const timeMin = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+	const sourceEvents = await listSourceEvents(calendar, "crewOne", timeMin);
+
+	for (const ev of sourceEvents) {
+		const rowId = rowIdFromEvent(ev, "crewOne") || "";
+		if (!rowId.includes("|deadlineReminder")) continue;
+		await deleteSourceEventByRowId(calendar, "crewOne", rowId, ev.id);
+	}
 }
 
 /**
@@ -342,10 +360,22 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 		// positively cancelled it, OR the source is an authoritative snapshot
 		// (removeAbsent) where absence means it was taken off the schedule. Otherwise
 		// absent events are kept so real shifts survive scrape gaps / reschedules / drift.
+		// Rhino is the exception: a recently created/updated event that has disappeared
+		// from the portal within the recent lookback window is likely a reschedule and
+		// should be cleaned up so the calendar doesn't retain stale entries.
+		// Crew One should preserve past events regardless of dashboard removal, since
+		// historical calls are still valuable to keep on the calendar.
 		const cancelled = rowIdInSet(source, rowId, cancelledSet, cancelledRelaxedKeys);
-		if (!cancelled && !removeAbsent) continue;
+		const eventStartedAt = ev.start?.dateTime ? new Date(ev.start.dateTime).getTime() : null;
+		const isPastEvent = eventStartedAt != null && eventStartedAt < Date.now();
+		const isRecentPastRhinoEvent =
+			source === "rhino" &&
+			eventStartedAt != null &&
+			Date.now() - eventStartedAt <= RECENT_PAST_EVENT_LOOKBACK_MS;
+		if (source === "crewOne" && isPastEvent) continue;
+		if (!cancelled && !removeAbsent && !isRecentPastRhinoEvent) continue;
 
-		const reason = cancelled ? "cancelled" : "removed from schedule";
+		const reason = cancelled ? "cancelled" : isRecentPastRhinoEvent ? "recently rescheduled" : "removed from schedule";
 		console.log(
 			`purgeOrphanedSourceEvents(${source}): removing ${reason} event ${ev.id} (row "${rowId}")`
 		);

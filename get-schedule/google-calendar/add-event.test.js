@@ -332,6 +332,27 @@ describe("purgeOrphanedSourceEvents", () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  it("keeps past crewOne events even when they are no longer on the dashboard", async () => {
+    const past = {
+      id: "evt-crewone-past",
+      summary: "8am CONCERT",
+      start: { dateTime: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() },
+      extendedProperties: {
+        private: {
+          scheduleSource: "crewOne",
+          scheduleRowId: "6/12/2026 | 08:00 | CONCERT | State Farm Arena | STAGEHAND | CONCERT"
+        }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [past] } });
+
+    await purgeOrphanedSourceEvents({}, "crewOne", ["6/13/2026 | 08:00 | OTHER | Other Venue"], {
+      removeAbsent: true
+    });
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
   it("deletes a cancelled crewOne event matched by dashboard key, ignoring detail drift", async () => {
     const storedRowId =
       "6/12/2026 | 08:00 | CONCERT | State Farm Arena | STAGEHAND | CONCERT";

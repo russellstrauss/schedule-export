@@ -78,6 +78,9 @@ export function classifyMessageKind(text) {
   if (/^Confirmed\.?\s*My mistake/i.test(trimmed)) return "correction";
   if (/^Confirmed/i.test(trimmed)) return "confirmation";
   if (/^This is your reminder/i.test(trimmed)) return "reminder";
+  if (/reminder/i.test(trimmed) && /\b(please be there|confirm|you will be there|you are scheduled|your shift|your call|your reminder)\b/i.test(trimmed)) {
+    return "reminder";
+  }
   if (/quick call/i.test(trimmed)) return "quick_call_ask";
   if (/^Are you available/i.test(trimmed)) return "availability_ask";
   if (/load in filled|load out available|load in only|load out by itself|early load available/i.test(trimmed)) {
@@ -150,6 +153,20 @@ export function inferExpectedCalendarEvents(text, hints, precedingContext = []) 
       types: ["Call"],
       note: "Single quick-call time."
     };
+  }
+
+  if (classifyMessageKind(text) === "reminder") {
+    const reminderTimeMatches = [...text.matchAll(TIME_TOKEN_RE)].map((m) => m[1]);
+    const parsed = reminderTimeMatches.map(parseIatseTimeToken).filter(Boolean);
+
+    if (parsed.length >= 1) {
+      return {
+        count: 1,
+        types: ["Call"],
+        callTimes24h: parsed,
+        note: "Reminder text provides confirmation evidence for a shift."
+      };
+    }
   }
 
   const confirmMatch = text.match(/^Confirmed\s+(\d{1,2}\/\d{1,2})\s+\S+\s+(.+?)(?:\.|Thank|$)/i);

@@ -5,6 +5,30 @@ export const sourceId = "rhino";
 
 const LOGIN_URL = "https://thinkrhino.com/employee/georgia/Index.aspx?cookieCheck=true";
 
+/**
+ * Resolve the schedule table from the portal markup.
+ * Rhino sometimes renders the grid under a different id or with a nested table.
+ * @param {Document|{querySelector?: Function}} documentLike
+ * @returns {Element|null}
+ */
+export function findRhinoScheduleTable(documentLike) {
+  if (!documentLike || typeof documentLike.querySelector !== "function") return null;
+
+  const candidates = [
+    'table#dgResults',
+    'table[id*="dgResults"]',
+    'table[id*="Grid"]',
+    'table'
+  ];
+
+  for (const selector of candidates) {
+    const element = documentLike.querySelector(selector);
+    if (element) return element;
+  }
+
+  return null;
+}
+
 /** @returns {string[]} */
 export function missingCredentialEnvVars() {
   const missing = [];
@@ -41,10 +65,20 @@ export async function fetchSchedule(page) {
       page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 90000 }).catch(() => {}),
       page.click("#btnSchedule")
     ]);
-    await page.waitForSelector("table#dgResults", { visible: true, timeout: 90000 });
+
+    await page.waitForFunction(() => {
+      const table = document.querySelector("table#dgResults")
+        || document.querySelector('table[id*="dgResults"]')
+        || document.querySelector('table[id*="Grid"]')
+        || document.querySelector("table");
+      return !!table && table.querySelectorAll("tbody tr, thead tr, tr").length > 0;
+    }, { timeout: 90000 });
 
     const rows = await page.evaluate((callCancelledLabel) => {
-      const table = document.querySelector("table#dgResults");
+      const table = document.querySelector("table#dgResults")
+        || document.querySelector('table[id*="dgResults"]')
+        || document.querySelector('table[id*="Grid"]')
+        || document.querySelector("table");
       if (!table) return [];
 
       const normalizeCellText = (text) =>
@@ -64,9 +98,11 @@ export async function fetchSchedule(page) {
         return -1;
       };
 
-      const allRows = Array.from(table.querySelectorAll("tbody tr"));
-      const headerRow = allRows[0];
-      const bodyRows = allRows.slice(1, -1);
+      const allRows = Array.from(table.querySelectorAll("tbody tr, thead tr, tr"));
+      if (allRows.length === 0) return [];
+
+      const headerRow = allRows.find((row) => Array.from(row.querySelectorAll("td, th")).some((cell) => cell.textContent && cell.textContent.trim())) || allRows[0];
+      const bodyRows = allRows.filter((row) => row !== headerRow).filter((row) => Array.from(row.querySelectorAll("td")).length >= 2);
 
       const headerCells = headerRow ? Array.from(headerRow.querySelectorAll("td, th")) : [];
       const hasActionsColumn = headerIndex(headerCells, "actions") >= 0;

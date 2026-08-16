@@ -4,7 +4,10 @@ import {
   parseCrew1DateTime,
   normalizeCrew1DateTimeText,
   matchDetailCall,
-  formatCrewOneEventDescription
+  formatCrewOneEventDescription,
+  parseCrewOneOfferDeadline,
+  parseCrewOneOfferState,
+  buildCrewOneDeadlineReminderEvent
 } from "./crewOne.js";
 
 describe("crewOne", () => {
@@ -89,5 +92,55 @@ describe("crewOne", () => {
     expect(text).toContain("Call notes: Arrive early");
     expect(text).toContain("Bring hard hat.");
     expect(text).toContain("Parking in Ruby lot.");
+  });
+
+  it("parses crew one offer deadlines and builds a reminder event", () => {
+    const deadline = parseCrewOneOfferDeadline("This offer closes July 24, 2026 at 9:00 AM");
+    expect(deadline).toEqual({
+      month: 7,
+      day: 24,
+      year: 2026,
+      hours: 9,
+      minutes: 0,
+      text: "This offer closes July 24, 2026 at 9:00 AM"
+    });
+
+    const reminder = buildCrewOneDeadlineReminderEvent(
+      {
+        source: "crewOne",
+        date: "7/24/2026",
+        callTime: "08:00",
+        show: "A TEST SHOW",
+        venue: "The Venue",
+        offerDeadlineText: "This offer closes July 24, 2026 at 9:00 AM"
+      },
+      deadline
+    );
+
+    expect(reminder).toMatchObject({
+      source: "crewOne",
+      kind: "deadlineReminder",
+      summary: "Offer deadline: A TEST SHOW",
+      start: "2026-07-24T09:00:00",
+      end: "2026-07-24T09:30:00",
+      description: expect.stringContaining("This offer closes July 24, 2026 at 9:00 AM")
+    });
+  });
+
+  it("keeps deadline reminders pending when the page only says to accept or decline", () => {
+    const state = parseCrewOneOfferState("Please accept or decline this offer by the deadline.");
+    expect(state).toBe("pending");
+
+    const reminder = buildCrewOneDeadlineReminderEvent({
+      source: "crewOne",
+      date: "7/24/2026",
+      callTime: "08:00",
+      show: "A TEST SHOW",
+      venue: "The Venue",
+      offerDeadlineText: "This offer closes July 24, 2026 at 9:00 AM",
+      offerState: state
+    });
+
+    expect(reminder).not.toBeNull();
   });
 });

@@ -43,6 +43,14 @@ describe("inferExpectedCalendarEvents", () => {
     expect(expected?.types).toEqual(["Load Out"]);
   });
 
+  it("treats reminder text as confirmation evidence for a reminder-only shift", () => {
+    const text = "This is your reminder for 7/16 FIFA at 9:00 AM. Please be there.";
+    const hints = extractSchedulingHints(text, new Date("2026-07-16"));
+    const expected = inferExpectedCalendarEvents(text, hints, []);
+    expect(expected?.count).toBe(1);
+    expect(expected?.types).toEqual(["Call"]);
+  });
+
   it("expects null count for availability-only asks", () => {
     const text = "Are you available 6/3 for Charlie Puth at Chastain for a 10:30AM and 10PM Load Pit";
     const hints = extractSchedulingHints(text, new Date("2026-06-01"));

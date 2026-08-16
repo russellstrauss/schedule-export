@@ -104,15 +104,38 @@ export function stripCancelledShowPrefix(show) {
  * @param {string} callTimeStr
  */
 export function parseScheduleDateParts(dateStr, callTimeStr) {
-  const [month, day, year] = (dateStr || "").split("/").map(Number);
-  const tokens = (callTimeStr || "").trim().split(/\s+/);
-  const timeToken = tokens[0] || "0:00";
-  const timeParts = timeToken.split(":").map((part) => parseInt(part, 10) || 0);
-  let hours = timeParts[0] ?? 0;
-  let minutes = timeParts[1] ?? 0;
-  const ampm = tokens[1]?.toUpperCase();
-  if (ampm === "PM" && hours < 12) hours += 12;
-  if (ampm === "AM" && hours === 12) hours = 0;
+  const parts = (dateStr || "").split("/").map((part) => part.trim());
+  const [monthPart, dayPart, yearPart] = parts;
+  const month = Number(monthPart);
+  const day = Number(dayPart);
+  let year = Number(yearPart);
+  if (yearPart && yearPart.length === 2) {
+    year = 2000 + year;
+  } else if (!yearPart) {
+    year = new Date().getFullYear();
+  }
+
+  const normalizedCallTime = (callTimeStr || "").trim();
+  const timeMatch = normalizedCallTime.match(/^\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*$/i);
+  let hours = 0;
+  let minutes = 0;
+  if (timeMatch) {
+    hours = Number(timeMatch[1]);
+    minutes = timeMatch[2] ? Number(timeMatch[2]) : 0;
+    const ampm = timeMatch[3]?.toUpperCase();
+    if (ampm === "PM" && hours < 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+  } else {
+    const tokens = normalizedCallTime.split(/\s+/);
+    const timeToken = tokens[0] || "0:00";
+    const timeParts = timeToken.split(":").map((part) => parseInt(part, 10) || 0);
+    hours = timeParts[0] ?? 0;
+    minutes = timeParts[1] ?? 0;
+    const ampm = tokens[1]?.toUpperCase();
+    if (ampm === "PM" && hours < 12) hours += 12;
+    if (ampm === "AM" && hours === 12) hours = 0;
+  }
+
   return { year, month, day, hours, minutes };
 }
 
@@ -239,12 +262,20 @@ export const isCallCancelledLabel = (text) => {
  */
 export const isEventCancelled = (entry) => {
   if (entry.isCallCancelled) return true;
-  const showName = entry.show?.toLowerCase() || "";
-  if (showName.includes("cancelled") || showName.includes("canceled")) return true;
-  const status = normalizeTextForMatch(entry.status);
-  if (status.includes("called out")) return true;
-  if (status.includes("turned down") && status.includes("unavailable")) return true;
-  const lettersOnly = status.replace(/[^a-z]/g, "");
+
+  const rowText = normalizeTextForMatch(
+    [entry.show, entry.status, entry.details, entry.notes]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  if (rowText.includes("cancelled") || rowText.includes("canceled")) return true;
+  if (rowText.includes("call filled") || rowText.includes("filled already")) return true;
+  if (rowText.includes("called out")) return true;
+  if (rowText.includes("turned down") && rowText.includes("unavailable")) return true;
+
+  const lettersOnly = rowText.replace(/[^a-z]/g, "");
+  if (lettersOnly.includes("callfilled") || lettersOnly.includes("filledalready")) return true;
   if (lettersOnly.includes("turneddown") && lettersOnly.includes("unavailable")) return true;
   return false;
 };
@@ -258,10 +289,19 @@ export const isEventCancelled = (entry) => {
  * @param {number} hours - Hours (0-23)
  * @param {number} minutes - Minutes (0-59)
  * @param {string} timezone - Timezone (default: "America/New_York")
+ * @param {Date} [referenceDate] - Optional date to compare against instead of now
  * @returns {boolean} True if the event is in the future
  */
-export const isEventInFuture = (year, month, day, hours, minutes, timezone = "America/New_York") => {
-  // Get current time components in the target timezone
+export const isEventInFuture = (
+  year,
+  month,
+  day,
+  hours,
+  minutes,
+  timezone = "America/New_York",
+  referenceDate = undefined
+) => {
+  const now = referenceDate instanceof Date ? referenceDate : new Date();
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
@@ -273,7 +313,7 @@ export const isEventInFuture = (year, month, day, hours, minutes, timezone = "Am
     hour12: false
   });
   
-  const nowParts = formatter.formatToParts(new Date());
+  const nowParts = formatter.formatToParts(now);
   const nowObj = {};
   nowParts.forEach(part => {
     if (part.type !== "literal") {
@@ -480,7 +520,7 @@ export const toGoogleEvent = (entry, options = {}) => {
  * @returns {ReturnType<typeof toGoogleEvent>[]}
  */
 export function logAndMapEvents(entries, sourceId, options = {}) {
-  const { futureOnly = true, timezone = "America/New_York" } = options;
+  const { futureOnly = true, timezone = "America/New_York", referenceDate = undefined } = options;
 
   const validEntries = entries.filter((entry) => !isEventCancelled(entry));
 
@@ -491,7 +531,7 @@ export function logAndMapEvents(entries, sourceId, options = {}) {
         entry.date,
         entry.callTime
       );
-      return isEventInFuture(year, month, day, hours, minutes, timezone);
+      return isEventInFuture(year, month, day, hours, minutes, timezone, referenceDate);
     });
   }
 

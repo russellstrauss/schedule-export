@@ -14,7 +14,8 @@ import {
   scheduleRowId,
   normalizeScheduleRowId,
   crewOneRowMatchKey,
-  parseScheduleDateParts
+  parseScheduleDateParts,
+  normalizeScheduleDate
 } from './utils.js';
 
 describe('sortScheduleEntriesChronologically', () => {
@@ -161,6 +162,42 @@ describe('isEventCancelled', () => {
     const entry = {
       show: 'Some Show',
       status: 'Called Out',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "Call Filled" in status', () => {
+    const entry = {
+      show: 'Some Show',
+      status: 'Call Filled',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "Call Filled" in show name', () => {
+    const entry = {
+      show: 'Call Filled',
+      status: undefined,
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "Call Filled" in details', () => {
+    const entry = {
+      show: 'Noah Kahan',
+      details: 'This offer is Call Filled',
+      isCallCancelled: false
+    };
+    expect(isEventCancelled(entry)).toBe(true);
+  });
+
+  it('should return true for events with "Call Filled" in notes', () => {
+    const entry = {
+      show: 'Noah Kahan',
+      notes: 'Call Filled',
       isCallCancelled: false
     };
     expect(isEventCancelled(entry)).toBe(true);
@@ -563,6 +600,28 @@ describe('scheduleRowId normalization', () => {
       type: 'IN'
     })).toBe('6/12/2026 | 08:00 | TEST | Arena | SH | IN');
   });
+
+  it('normalizes two-digit years to 20xx', () => {
+    expect(parseScheduleDateParts('7/16/26', '09:00')).toEqual({
+      year: 2026,
+      month: 7,
+      day: 16,
+      hours: 9,
+      minutes: 0
+    });
+  });
+
+  it('infers a current year for month/day-only dates', () => {
+    const currentYear = new Date().getFullYear();
+    expect(parseScheduleDateParts('7/16', '9:00 AM')).toEqual({
+      year: currentYear,
+      month: 7,
+      day: 16,
+      hours: 9,
+      minutes: 0
+    });
+    expect(normalizeScheduleDate('7/16')).toBe(`7/16/${currentYear}`);
+  });
 });
 
 describe('crewOne scheduleRowId', () => {
@@ -587,6 +646,29 @@ describe('crewOne scheduleRowId', () => {
     const current = scheduleRowId(entry);
     const legacy = '6/12/2026 | 08:00 | CONCERT | State Farm Arena | STAGEHAND | CONCERT';
     expect(crewOneRowMatchKey(legacy)).toBe(current);
+  });
+});
+
+describe('logAndMapEvents future-only filtering', () => {
+  it('keeps a two-digit-year entry when the parsed date is tomorrow relative to referenceDate', () => {
+    const entry = {
+      date: '7/16/26',
+      callTime: '09:00',
+      show: 'TEST SHOW',
+      venue: 'Arena',
+      position: 'SH',
+      type: 'IN'
+    };
+
+    const referenceDate = new Date('2026-07-15T12:00:00-04:00');
+    const mapped = logAndMapEvents([entry], 'iatse927', {
+      futureOnly: true,
+      timezone: 'America/New_York',
+      referenceDate
+    });
+
+    expect(mapped).toHaveLength(1);
+    expect(mapped[0].summary).toContain('TEST SHOW');
   });
 });
 

@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 
 import { authorize } from "./google-calendar/auth.js";
-import { addEvent, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
+import { addEvent, purgeCrewOneDeadlineReminderEvents, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
 import { withAuthRetry } from "./auth-handler.js";
 import { trySyncIatse927FromStore } from "./ingest-iatse927.js";
 import { isFirestoreCredentialsError } from "./iatse927-firestore-auth.js";
@@ -9,6 +9,7 @@ import { getPuppeteer, getPortalBrowserLaunchOptions, configurePortalPage, gotoP
 import { getEnabledSourceIds, getSource } from "./sources/index.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
+import { buildCrewOneDeadlineReminderEvent } from "./sources/crewOne.js";
 
 dotenv.config();
 
@@ -18,6 +19,16 @@ dotenv.config();
  */
 function filterAndMapEvents(entries, sourceId) {
   return logAndMapEvents(entries, sourceId, { futureOnly: true, timezone: DEFAULT_TIMEZONE });
+}
+
+/**
+ * @param {ReturnType<typeof buildCrewOneDeadlineReminderEvent>} event
+ * @param {string} sourceId
+ */
+export function formatDeadlineReminderLogLine(event, sourceId) {
+  const summary = event?.summary || "Untitled reminder";
+  const start = event?.start || "unknown time";
+  return `  🕒 [${sourceId}] deadline reminder ${summary} (${start})`;
 }
 
 /**
@@ -40,7 +51,7 @@ function getRunnablePortalSourceIds(enabledIds) {
  * @param {string[]} portalSourceIds
  */
 async function syncPortalSources(browser, portalSourceIds) {
-  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; activeRowIds: string[]; cancelledRowIds: string[] }>} */
+  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; reminderEvents: Array<ReturnType<typeof buildCrewOneDeadlineReminderEvent>>; activeRowIds: string[]; cancelledRowIds: string[] }>} */
   const syncPlanBySource = new Map();
 
   for (const sourceId of portalSourceIds) {
@@ -54,8 +65,16 @@ async function syncPortalSources(browser, portalSourceIds) {
       const cancelledEntries = entries.filter((entry) => isEventCancelled(entry));
       const activeRowIds = validEntries.map((entry) => scheduleRowId(entry));
       const cancelledRowIds = cancelledEntries.map((entry) => scheduleRowId(entry));
+      const reminderEvents =
+        sourceId === "crewOne"
+          ? entries
+              .map((entry) => buildCrewOneDeadlineReminderEvent(entry))
+              .filter(Boolean)
+          : [];
+
       syncPlanBySource.set(sourceId, {
         googleEvents: filterAndMapEvents(entries, sourceId),
+        reminderEvents,
         activeRowIds,
         cancelledRowIds
       });
@@ -79,16 +98,27 @@ async function syncPortalSources(browser, portalSourceIds) {
 
   let auth = await authorize();
 
-  for (const [sourceId, { googleEvents, activeRowIds, cancelledRowIds }] of syncPlanBySource) {
+  for (const [sourceId, { googleEvents, reminderEvents, activeRowIds, cancelledRowIds }] of syncPlanBySource) {
     // CrewOne's dashboard is a complete snapshot of all upcoming calls, so a call
     // that's no longer listed has been taken off the schedule and should be removed.
     const removeAbsent = sourceId === "crewOne";
     auth = await withAuthRetry(auth, async (a) => {
+      if (sourceId === "crewOne") {
+        await purgeCrewOneDeadlineReminderEvents(a);
+      }
       await purgeOrphanedSourceEvents(a, sourceId, activeRowIds, { cancelledRowIds, removeAbsent });
       return a;
     });
 
     for (const event of googleEvents) {
+      auth = await withAuthRetry(auth, async (a) => {
+        await addEvent(a, event);
+        return a;
+      });
+    }
+
+    for (const event of reminderEvents) {
+      console.log(formatDeadlineReminderLogLine(event, sourceId));
       auth = await withAuthRetry(auth, async (a) => {
         await addEvent(a, event);
         return a;
@@ -105,7 +135,9 @@ export default async function getSchedule() {
   if (portalSourceIds.length > 0) {
     try {
       const puppeteer = await getPuppeteer();
-      const browser = await puppeteer.launch(getPortalBrowserLaunchOptions({ headless: "new" }));
+      // Use a boolean headless flag for broader compatibility across devices
+      // (some environments don't support the "new" headless mode string).
+      const browser = await puppeteer.launch(getPortalBrowserLaunchOptions({ headless: true }));
       try {
         portalSourcesRan = portalSourceIds.length;
         await syncPortalSources(browser, portalSourceIds);

@@ -28,9 +28,14 @@ export async function syncIatse927FromMessages(messages) {
   const cancelledRowIds = cancelledEntries.map((entry) =>
     scheduleRowId({ ...entry, source: sourceId })
   );
+  const latestReceivedAt = messages.reduce((latest, msg) => {
+    const ts = msg.receivedAt?.getTime?.() ?? 0;
+    return ts > latest ? ts : latest;
+  }, 0);
   const googleEvents = logAndMapEvents(entries, sourceId, {
     futureOnly: true,
-    timezone: DEFAULT_TIMEZONE
+    timezone: DEFAULT_TIMEZONE,
+    referenceDate: latestReceivedAt > 0 ? new Date(latestReceivedAt) : undefined
   });
 
   // Nothing upcoming to sync (no messages, or all parsed events are in the past).
