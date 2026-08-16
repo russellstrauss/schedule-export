@@ -11,7 +11,7 @@ import { isFirestoreProjectIdError } from "./iatse927-firestore-auth.js";
 import { resolveScheduleEntriesWithValidation, isGeminiUnavailableError } from "./iatse927-gemini.js";
 import { sourceId } from "./sources/iatse927.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
-import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
+import { isEventCancelled, logAndMapEvents, scheduleRowId, isEventInFuture, parseScheduleDateParts } from "./utils.js";
 
 /**
  * @param {{ text: string; receivedAt?: Date | null; messageId?: string }[]} messages
@@ -22,21 +22,16 @@ export async function syncIatse927FromMessages(messages) {
   const { entries, warnings } = await resolveScheduleEntriesWithValidation(messages);
   const validEntries = entries.filter((entry) => !isEventCancelled(entry));
   const cancelledEntries = entries.filter((entry) => isEventCancelled(entry));
-  const activeRowIds = validEntries.map((entry) =>
-    scheduleRowId({ ...entry, source: sourceId })
-  );
-  const cancelledRowIds = cancelledEntries.map((entry) =>
-    scheduleRowId({ ...entry, source: sourceId })
-  );
-  const latestReceivedAt = messages.reduce((latest, msg) => {
-    const ts = msg.receivedAt?.getTime?.() ?? 0;
-    return ts > latest ? ts : latest;
-  }, 0);
+  // Map entries to Google events filtering strictly by current time to avoid
+  // re-syncing past events that were referenced in old messages.
   const googleEvents = logAndMapEvents(entries, sourceId, {
     futureOnly: true,
-    timezone: DEFAULT_TIMEZONE,
-    referenceDate: latestReceivedAt > 0 ? new Date(latestReceivedAt) : undefined
+    timezone: DEFAULT_TIMEZONE
   });
+
+  // Active row ids must reflect the events we're actually syncing (future events).
+  const activeRowIds = googleEvents.map((e) => e.rowId);
+  const cancelledRowIds = cancelledEntries.map((entry) => scheduleRowId({ ...entry, source: sourceId }));
 
   // Nothing upcoming to sync (no messages, or all parsed events are in the past).
   // Skip auth/purge to avoid touching the calendar when there's nothing to sync.
