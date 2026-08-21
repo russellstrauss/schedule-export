@@ -74,7 +74,7 @@ export async function fetchSchedule(page) {
       return !!table && table.querySelectorAll("tbody tr, thead tr, tr").length > 0;
     }, { timeout: 90000 });
 
-    const rows = await page.evaluate((callCancelledLabel) => {
+    const rows = await page.evaluate(({ callCancelledLabel, callFilledLabel }) => {
       const table = document.querySelector("table#dgResults")
         || document.querySelector('table[id*="dgResults"]')
         || document.querySelector('table[id*="Grid"]')
@@ -148,9 +148,10 @@ export async function fetchSchedule(page) {
         const cellText = (index) =>
           index >= 0 && cells[index] ? cells[index].textContent.trim() : "";
 
-        const isCallCancelled = cells.some(
-          (cell) => normalizeCellText(cell.textContent) === callCancelledLabel
-        );
+        const isCallCancelled = cells.some((cell) => {
+          const normalizedText = normalizeCellText(cell.textContent);
+          return normalizedText === callCancelledLabel || normalizedText === callFilledLabel;
+        });
 
         let venueLink;
         if (venueLinkColumnIndex >= 0 && cells[venueLinkColumnIndex]) {
@@ -176,7 +177,10 @@ export async function fetchSchedule(page) {
         if (venueLink) entry.venueLink = venueLink;
         return entry;
       }).filter(Boolean);
-    }, CALL_CANCELLED_LABEL.toLowerCase());
+    }, {
+      callCancelledLabel: CALL_CANCELLED_LABEL.toLowerCase(),
+      callFilledLabel: "call filled"
+    });
 
     return rows.map((row) => ({ ...row, source: sourceId }));
   } catch (err) {

@@ -1,5 +1,6 @@
+import crypto from "crypto";
 import { authorize } from "./google-calendar/auth.js";
-import { addEvent, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
+import { addEvent, consolidateDuplicateSourceEvents, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
 import { withAuthRetry } from "./auth-handler.js";
 import {
   appendMessage,
@@ -13,11 +14,29 @@ import { sourceId } from "./sources/iatse927.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId, isEventInFuture, parseScheduleDateParts } from "./utils.js";
 
+let iatseSyncInFlight = null;
+let lastSuccessfulIatseSchedule = null;
+
+function messageSnapshotKey(messages) {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify(
+        messages.map((message) => ({
+          messageId: message.messageId || "",
+          text: message.text || "",
+          receivedAt: message.receivedAt?.toISOString?.() || message.receivedAt || null
+        }))
+      )
+    )
+    .digest("hex");
+}
+
 /**
  * @param {{ text: string; receivedAt?: Date | null; messageId?: string }[]} messages
  * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] }>}
  */
-export async function syncIatse927FromMessages(messages) {
+async function syncIatse927FromMessagesInternal(messages) {
   console.log(`🌐 Fetching schedule from ${sourceId}...`);
   const { entries, warnings } = await resolveScheduleEntriesWithValidation(messages);
   const validEntries = entries.filter((entry) => !isEventCancelled(entry));
@@ -28,15 +47,29 @@ export async function syncIatse927FromMessages(messages) {
     futureOnly: true,
     timezone: DEFAULT_TIMEZONE
   });
+  const snapshotKey = messageSnapshotKey(messages);
+  const cachedSchedule =
+    lastSuccessfulIatseSchedule?.snapshotKey === snapshotKey
+      ? lastSuccessfulIatseSchedule.googleEvents
+      : null;
+  const eventsToSync = googleEvents.length > 0 ? googleEvents : cachedSchedule || [];
+  if (googleEvents.length === 0 && cachedSchedule) {
+    console.warn("No events parsed; reusing the last successful IATSE schedule for this message snapshot.");
+  }
 
   // Active row ids must reflect the events we're actually syncing (future events).
-  const activeRowIds = googleEvents.map((e) => e.rowId);
+  const activeRowIds = eventsToSync.map((e) => e.rowId);
   const cancelledRowIds = cancelledEntries.map((entry) => scheduleRowId({ ...entry, source: sourceId }));
 
   // Nothing upcoming to sync (no messages, or all parsed events are in the past).
   // Skip auth/purge to avoid touching the calendar when there's nothing to sync.
-  if (googleEvents.length === 0) {
+  if (eventsToSync.length === 0) {
     console.warn("No currently scheduled events.");
+    const auth = await authorize();
+    await withAuthRetry(auth, async (a) => {
+      await consolidateDuplicateSourceEvents(a, sourceId);
+      return a;
+    });
     return { parsed: entries.length, synced: 0, warnings };
   }
 
@@ -47,18 +80,32 @@ export async function syncIatse927FromMessages(messages) {
     return a;
   });
 
-  for (const event of googleEvents) {
+  for (const event of eventsToSync) {
     auth = await withAuthRetry(auth, async (a) => {
-      await addEvent(a, event);
+      const result = await addEvent(a, event);
+      if (result?.action === "error") {
+        throw result.error || new Error(`Failed to sync IATSE event ${event.rowId}`);
+      }
       return a;
     });
   }
 
+	lastSuccessfulIatseSchedule = { snapshotKey, googleEvents: eventsToSync };
+
   return {
     parsed: entries.length,
-    synced: googleEvents.length,
+    synced: eventsToSync.length,
     warnings
   };
+}
+
+export function syncIatse927FromMessages(messages) {
+  if (iatseSyncInFlight) return iatseSyncInFlight;
+
+  iatseSyncInFlight = syncIatse927FromMessagesInternal(messages).finally(() => {
+    iatseSyncInFlight = null;
+  });
+  return iatseSyncInFlight;
 }
 
 /**

@@ -87,22 +87,61 @@ export async function syncSchedule(req, res) {
     return;
   }
 
+  // Optionally capture console output and return it in the HTTP response
+  const showLogs = String(req.query?.showLogs || req.query?.logs || "").toLowerCase() === "true";
+  const logs = [];
+  const originalConsole = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+
+  function pushLog(level, args) {
+    try {
+      const text = args.map((a) => {
+        try {
+          return typeof a === "string" ? a : JSON.stringify(a);
+        } catch (e) {
+          return String(a);
+        }
+      }).join(" ");
+      logs.push({ level, text, ts: new Date().toISOString() });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  if (showLogs) {
+    console.log = (...args) => { pushLog("log", args); originalConsole.log(...args); };
+    console.info = (...args) => { pushLog("info", args); originalConsole.info(...args); };
+    console.warn = (...args) => { pushLog("warn", args); originalConsole.warn(...args); };
+    console.error = (...args) => { pushLog("error", args); originalConsole.error(...args); };
+  }
+
   try {
     console.log("🔄 Starting schedule sync...");
     await getSchedule();
     console.log("✅ Schedule sync completed.");
 
-    res.status(200).json({
+    const payload = {
       success: true,
       message: "Schedule sync completed successfully",
       timestamp: new Date().toISOString()
-    });
+    };
+    if (showLogs) payload.logs = logs;
+    res.status(200).json(payload);
   } catch (err) {
     console.error("❌ Sync failed:", err);
-    res.status(500).json({
+    const status = 500;
+    const payload = {
       success: false,
-      error: err.message,
+      error: err?.message || String(err),
       timestamp: new Date().toISOString()
-    });
+    };
+    if (showLogs) payload.logs = logs;
+    res.status(status).json(payload);
+  } finally {
+    if (showLogs) {
+      console.log = originalConsole.log;
+      console.info = originalConsole.info;
+      console.warn = originalConsole.warn;
+      console.error = originalConsole.error;
+    }
   }
 }

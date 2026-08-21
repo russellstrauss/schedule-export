@@ -95,6 +95,24 @@ export async function syncEvent(auth, event) {
 	const source = event.source || "rhino";
 	const newEventId = deterministicIdFor(source, event.rowId);
 	const requestBody = normalizeEventBody(event);
+	const normalizedRowId = normalizeScheduleRowId(event.rowId);
+
+	const reconcileMatches = async (matches) => {
+		if (matches.length === 0) return null;
+		const [existing, ...duplicates] = matches;
+		const res = await calendar.events.update({
+			calendarId: "primary",
+			eventId: existing.id,
+			requestBody
+		});
+		for (const duplicate of duplicates) {
+			if (duplicate.id && duplicate.id !== existing.id) {
+				await calendar.events.delete({ calendarId: "primary", eventId: duplicate.id });
+			}
+		}
+		return { action: "updated", event: res.data };
+	};
+	let existingById = null;
 
 	const candidateIds = [newEventId];
 	if (source === "rhino") {
@@ -103,13 +121,8 @@ export async function syncEvent(auth, event) {
 
 	for (const eventId of candidateIds) {
 		try {
-			await calendar.events.get({ calendarId: "primary", eventId });
-			const res = await calendar.events.update({
-				calendarId: "primary",
-				eventId,
-				requestBody
-			});
-			return { action: "updated", event: res.data };
+			existingById = (await calendar.events.get({ calendarId: "primary", eventId })).data;
+			break;
 		} catch (err) {
 			const notFound = err?.code === 404 || err?.response?.status === 404;
 			if (!notFound) {
@@ -119,16 +132,18 @@ export async function syncEvent(auth, event) {
 		}
 	}
 
+	const matchingEvents = await findSourceEventsByRowId(calendar, source, normalizedRowId);
+	if (existingById?.id && !matchingEvents.some((event) => event.id === existingById.id)) {
+		matchingEvents.unshift(existingById);
+	}
+	const reconciled = await reconcileMatches(matchingEvents);
+	if (reconciled) return reconciled;
+
 	if (source === "crewOne") {
 		const matchKey = crewOneRowMatchKey(event.rowId);
 		const existing = await findCrewOneEventByMatchKey(calendar, source, matchKey);
 		if (existing?.id) {
-			const res = await calendar.events.update({
-				calendarId: "primary",
-				eventId: existing.id,
-				requestBody
-			});
-			return { action: "updated", event: res.data };
+			return reconcileMatches([existing]);
 		}
 	}
 
@@ -146,6 +161,15 @@ export async function syncEvent(auth, event) {
 		}
 		return { action: "error", error: insertErr };
 	}
+}
+
+async function findSourceEventsByRowId(calendar, source, normalizedRowId) {
+	const timeMin = new Date(Date.now() - RECENT_PAST_EVENT_LOOKBACK_MS).toISOString();
+	const sourceEvents = await listSourceEvents(calendar, source, timeMin);
+	return sourceEvents.filter((ev) => {
+		const rowId = rowIdFromEvent(ev, source);
+		return rowId && normalizeScheduleRowId(rowId) === normalizedRowId;
+	});
 }
 
 export async function addEvent(auth, event) {
@@ -282,6 +306,40 @@ export async function purgeSourceEvents(auth, source, options = {}) {
 }
 
 /**
+ * Keep one event per tagged source row when a schedule fetch has no usable
+ * future rows to update. This is a recovery path for duplicate cleanup only;
+ * it never deletes the sole event for a row.
+ * @param {OAuth2Client} auth
+ * @param {string} source
+ */
+export async function consolidateDuplicateSourceEvents(auth, source) {
+	const calendar = google.calendar({ version: "v3", auth });
+	const timeMin = new Date().toISOString();
+	const sourceEvents = await listSourceEvents(calendar, source, timeMin);
+	const eventsByRowId = new Map();
+
+	for (const event of sourceEvents) {
+		const rowId = rowIdFromEvent(event, source);
+		if (!rowId) continue;
+		const normalizedRowId = normalizeScheduleRowId(rowId);
+		const matches = eventsByRowId.get(normalizedRowId) || [];
+		matches.push(event);
+		eventsByRowId.set(normalizedRowId, matches);
+	}
+
+	let removed = 0;
+	for (const matches of eventsByRowId.values()) {
+		for (const duplicate of matches.slice(1)) {
+			if (!duplicate.id) continue;
+			await calendar.events.delete({ calendarId: "primary", eventId: duplicate.id });
+			removed += 1;
+		}
+	}
+
+	return removed;
+}
+
+/**
  * Reconcile tagged calendar events against the latest schedule fetch.
  *
  * Safety contract (the whole point of this function): an event is removed ONLY when
@@ -375,18 +433,8 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 		if (source === "crewOne" && isPastEvent) continue;
 		if (!cancelled && !removeAbsent && !isRecentPastRhinoEvent) continue;
 
-		const reason = cancelled ? "cancelled" : isRecentPastRhinoEvent ? "recently rescheduled" : "removed from schedule";
-		console.log(
-			`purgeOrphanedSourceEvents(${source}): removing ${reason} event ${ev.id} (row "${rowId}")`
-		);
 		await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
 		deletedCount += 1;
-	}
-
-	if (deletedCount > 0) {
-		console.log(
-			`purgeOrphanedSourceEvents(${source}): removed ${deletedCount} event(s) no longer on the schedule.`
-		);
 	}
 }
 

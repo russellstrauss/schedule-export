@@ -46,6 +46,7 @@ vi.mock("./google-calendar/auth.js", () => ({
 
 vi.mock("./google-calendar/add-event.js", () => ({
   purgeOrphanedSourceEvents: vi.fn(async () => {}),
+  consolidateDuplicateSourceEvents: vi.fn(async () => 0),
   addEvent: vi.fn(async () => {})
 }));
 
@@ -53,8 +54,12 @@ vi.mock("./auth-handler.js", () => ({
   withAuthRetry: vi.fn(async (_auth, fn) => fn({}))
 }));
 
-import { ingestIatse927, trySyncIatse927FromStore } from "./ingest-iatse927.js";
-import { purgeOrphanedSourceEvents, addEvent } from "./google-calendar/add-event.js";
+import { ingestIatse927, trySyncIatse927FromStore, syncIatse927FromMessages } from "./ingest-iatse927.js";
+import {
+  purgeOrphanedSourceEvents,
+  consolidateDuplicateSourceEvents,
+  addEvent
+} from "./google-calendar/add-event.js";
 import { appendMessage, loadAllMessages } from "./iatse927-message-store.js";
 import { resolveScheduleEntriesWithValidation } from "./iatse927-gemini.js";
 
@@ -123,5 +128,72 @@ describe("trySyncIatse927FromStore", () => {
     );
     const result = await trySyncIatse927FromStore();
     expect(result).toBeNull();
+  });
+});
+
+describe("syncIatse927FromMessages", () => {
+  beforeEach(() => {
+    resolveScheduleEntriesWithValidation.mockClear();
+    addEvent.mockClear();
+    purgeOrphanedSourceEvents.mockClear();
+    consolidateDuplicateSourceEvents.mockClear();
+  });
+
+  it("shares an in-flight sync when called concurrently", async () => {
+    const resultOne = syncIatse927FromMessages([{ text: "same message" }]);
+    const resultTwo = syncIatse927FromMessages([{ text: "same message" }]);
+
+    expect(resultOne).toBe(resultTwo);
+    await Promise.all([resultOne, resultTwo]);
+    expect(resolveScheduleEntriesWithValidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("consolidates existing calendar duplicates when no future rows are parsed", async () => {
+    resolveScheduleEntriesWithValidation.mockResolvedValueOnce({ entries: [], warnings: [] });
+
+    const result = await syncIatse927FromMessages([{ text: "Confirmed Lakewood 8/22 8AM and 8/23 6PM" }]);
+
+    expect(result.synced).toBe(0);
+    expect(consolidateDuplicateSourceEvents).toHaveBeenCalledWith({}, "iatse927");
+  });
+
+  it("writes both events when two future rows are parsed", async () => {
+    const firstEvent = { ...mockEntry, date: mockEntryDate, callTime: "08:00" };
+    const secondEvent = { ...mockEntry, date: mockEntryDate, callTime: "18:00", type: "Load Out" };
+    resolveScheduleEntriesWithValidation.mockResolvedValueOnce({
+      entries: [firstEvent, secondEvent],
+      warnings: []
+    });
+    addEvent.mockResolvedValue({ action: "created", event: { id: "created" } });
+
+    const result = await syncIatse927FromMessages([{ text: "two confirmed events" }]);
+
+    expect(result.synced).toBe(2);
+    expect(addEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails the sync when a calendar write fails", async () => {
+    addEvent.mockResolvedValueOnce({ action: "error", error: new Error("calendar unavailable") });
+
+    await expect(syncIatse927FromMessages([{ text: "confirmed event" }])).rejects.toThrow(
+      "calendar unavailable"
+    );
+  });
+
+  it("reuses the prior successful schedule when the same snapshot parses empty", async () => {
+    const messages = [{ text: "same snapshot", messageId: "same-snapshot" }];
+    resolveScheduleEntriesWithValidation.mockResolvedValueOnce({
+      entries: [mockEntry],
+      warnings: []
+    });
+    addEvent.mockResolvedValue({ action: "created", event: { id: "created" } });
+    await syncIatse927FromMessages(messages);
+
+    resolveScheduleEntriesWithValidation.mockResolvedValueOnce({ entries: [], warnings: [] });
+    addEvent.mockClear();
+    const result = await syncIatse927FromMessages(messages);
+
+    expect(result.synced).toBe(1);
+    expect(addEvent).toHaveBeenCalledTimes(1);
   });
 });

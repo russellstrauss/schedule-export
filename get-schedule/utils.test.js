@@ -516,6 +516,46 @@ describe('toGoogleEvent', () => {
   });
 });
 
+describe('logAndMapEvents cancellation filtering', () => {
+  it('does not map a Rhino Call Filled row to an unconfirmed event', () => {
+    const events = logAndMapEvents(
+      [
+        {
+          source: 'rhino',
+          date: '8/22/2026',
+          callTime: '09:00',
+          show: 'LOST SHOW',
+          venue: 'Arena',
+          location: '',
+          position: 'SH',
+          type: 'IN',
+          status: 'Call Filled',
+          details: '',
+          notes: ''
+        },
+        {
+          source: 'rhino',
+          date: '8/22/2026',
+          callTime: '10:00',
+          show: 'CONFIRMED SHOW',
+          venue: 'Arena',
+          location: '',
+          position: 'SH',
+          type: 'IN',
+          status: 'Confirmed',
+          details: '',
+          notes: ''
+        }
+      ],
+      'rhino',
+      { referenceDate: new Date('2026-08-21T12:00:00Z') }
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0].summary).toContain('CONFIRMED SHOW');
+  });
+});
+
 describe('formatDateTimeForTimezone', () => {
   it('should format date/time correctly', () => {
     expect(formatDateTimeForTimezone(2025, 11, 23, 8, 0)).toBe('2025-11-23T08:00:00');
@@ -669,6 +709,36 @@ describe('logAndMapEvents future-only filtering', () => {
 
     expect(mapped).toHaveLength(1);
     expect(mapped[0].summary).toContain('TEST SHOW');
+  });
+
+  it('uses the venue when an IATSE show title is unavailable', () => {
+    const entries = [
+      {
+        date: '7/16/2026',
+        callTime: '09:00',
+        show: 'Unknown Show',
+        venue: 'Lakewood Amphitheatre',
+        position: 'SH',
+        type: 'IN'
+      },
+      {
+        date: '7/17/2026',
+        callTime: '09:00',
+        show: '',
+        venue: 'State Farm Arena',
+        position: 'SH',
+        type: 'IN'
+      }
+    ];
+
+    const mapped = logAndMapEvents(entries, 'iatse927', {
+      futureOnly: false
+    });
+
+    expect(mapped.map((event) => event.summary)).toEqual([
+      '8:30am Lakewood Amphitheatre',
+      '8:30am State Farm Arena'
+    ]);
   });
 });
 

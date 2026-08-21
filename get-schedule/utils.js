@@ -42,6 +42,13 @@ export const formatTimeForTitle = (timeStr) => {
 	}
 };
 
+/** @param {import("./sources/types.js").ScheduleEntry} entry */
+function iatse927EventTitle(entry) {
+  const show = entry.show?.trim();
+  if (show && !/^unknown show$/i.test(show)) return show;
+  return entry.venue?.trim() || "Unknown Show";
+}
+
 /**
  * Format date/time for Google Calendar API
  */
@@ -482,7 +489,7 @@ export const toGoogleEvent = (entry, options = {}) => {
     const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
     summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
   } else {
-    summary = `${formattedTime} ${entry.show}`;
+    summary = `${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`;
   }
 
   let description;
@@ -541,7 +548,7 @@ export function logAndMapEvents(entries, sourceId, options = {}) {
   syncEntries.forEach((entry, index) => {
     const logSummary =
       sourceId === "iatse927"
-        ? `${formatTimeForTitle(entry.callTime)} ${entry.show}`
+        ? `${formatTimeForTitle(entry.callTime)} ${iatse927EventTitle(entry)}`
         : googleEvents[index].summary;
     console.log(`  ✅ [${sourceId}] ${entry.date} ${logSummary}`);
   });

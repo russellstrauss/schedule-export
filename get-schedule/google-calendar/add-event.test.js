@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   deterministicIdFor,
   legacyRhinoDeterministicIdFor,
+  syncEvent,
+  consolidateDuplicateSourceEvents,
   eventMatchesSource,
   rowIdFromEvent,
   purgeSourceEvents,
@@ -10,13 +12,19 @@ import {
 
 const mockList = vi.fn();
 const mockDelete = vi.fn();
+const mockGet = vi.fn();
+const mockUpdate = vi.fn();
+const mockInsert = vi.fn();
 
 vi.mock("googleapis", () => ({
   google: {
     calendar: () => ({
       events: {
         list: mockList,
-        delete: mockDelete
+        delete: mockDelete,
+        get: mockGet,
+        update: mockUpdate,
+        insert: mockInsert
       }
     })
   }
@@ -75,6 +83,74 @@ describe("rowIdFromEvent", () => {
   });
 });
 
+describe("syncEvent", () => {
+  beforeEach(() => {
+    mockList.mockReset();
+    mockDelete.mockReset();
+    mockGet.mockReset().mockRejectedValue({ code: 404 });
+    mockUpdate.mockReset().mockResolvedValue({ data: { id: "updated" } });
+    mockInsert.mockReset().mockResolvedValue({ data: { id: "created" } });
+    mockList.mockResolvedValue({ data: { items: [] } });
+  });
+
+  it("consolidates duplicate tagged events instead of creating another copy", async () => {
+    const rowId = "8/22/2026 | 08:00 | Show | Lakewood Amphitheater | | Load In";
+    mockList.mockResolvedValueOnce({
+      data: {
+        items: [
+          { id: "copy-1", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-2", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-3", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-4", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } }
+        ]
+      }
+    });
+
+    const result = await syncEvent({}, {
+      source: "iatse927",
+      rowId,
+      summary: "8am Show",
+      start: "2026-08-22T08:00:00",
+      end: "2026-08-22T16:00:00"
+    });
+
+    expect(result.action).toBe("updated");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ eventId: "copy-1" }));
+    expect(mockDelete).toHaveBeenCalledTimes(3);
+  });
+
+  it("consolidates duplicates when the canonical event already exists", async () => {
+    const rowId = "8/23/2026 | 18:00 | Show | Lakewood Amphitheater | | Load Out";
+    const canonicalId = deterministicIdFor("iatse927", rowId);
+    mockGet.mockResolvedValueOnce({ data: { id: canonicalId } });
+    mockList.mockResolvedValueOnce({
+      data: {
+        items: [
+          { id: canonicalId, extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-2", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-3", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-4", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-5", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } }
+        ]
+      }
+    });
+
+    const result = await syncEvent({}, {
+      source: "iatse927",
+      rowId,
+      summary: "6pm Show",
+      start: "2026-08-23T18:00:00",
+      end: "2026-08-24T02:00:00"
+    });
+
+    expect(result.action).toBe("updated");
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ eventId: canonicalId }));
+    expect(mockDelete).toHaveBeenCalledTimes(4);
+  });
+});
+
 describe("purgeSourceEvents", () => {
   beforeEach(() => {
     mockList.mockReset();
@@ -112,6 +188,31 @@ describe("purgeSourceEvents", () => {
     expect(new Date(firstArgs.timeMin).getTime()).toBeLessThan(Date.now() - 365 * 24 * 60 * 60 * 1000);
     expect(secondArgs.pageToken).toBe("page2");
     expect(mockDelete).toHaveBeenCalled();
+  });
+});
+
+describe("consolidateDuplicateSourceEvents", () => {
+  beforeEach(() => {
+    mockList.mockReset();
+    mockDelete.mockReset().mockResolvedValue({});
+  });
+
+  it("keeps one tagged event per row and deletes only duplicates", async () => {
+    const rowId = "8/22/2026 | 08:00 | Show | Lakewood Amphitheater | | Load In";
+    mockList.mockResolvedValueOnce({
+      data: {
+        items: [
+          { id: "copy-1", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-2", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } },
+          { id: "copy-3", extendedProperties: { private: { scheduleSource: "iatse927", scheduleRowId: rowId } } }
+        ]
+      }
+    });
+
+    expect(await consolidateDuplicateSourceEvents({}, "iatse927")).toBe(2);
+    expect(mockDelete).toHaveBeenCalledTimes(2);
+    expect(mockDelete).toHaveBeenCalledWith({ calendarId: "primary", eventId: "copy-2" });
+    expect(mockDelete).toHaveBeenCalledWith({ calendarId: "primary", eventId: "copy-3" });
   });
 });
 
