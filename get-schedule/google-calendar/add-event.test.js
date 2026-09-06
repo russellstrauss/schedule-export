@@ -259,6 +259,25 @@ describe("purgeOrphanedSourceEvents", () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  it("deletes stale past IATSE events that are no longer in the active schedule", async () => {
+    const oldEvent = {
+      id: "evt-old",
+      start: { dateTime: "2026-08-20T09:00:00-04:00" },
+      extendedProperties: {
+        private: { scheduleSource: "iatse927", scheduleRowId: "8/20/2026 | 09:00 | Old Show | Venue" }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [oldEvent] } });
+
+    await purgeOrphanedSourceEvents({}, "iatse927", ["8/25/2026 | 09:00 | New Show | Venue"]);
+
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledWith({
+      calendarId: "primary",
+      eventId: "768e36583d3dbe1a8a612464b4370278be99b7d0"
+    });
+  });
+
   it("deletes an event only when its row is explicitly cancelled in the latest fetch", async () => {
     const cancelled = {
       id: "evt-cancelled",

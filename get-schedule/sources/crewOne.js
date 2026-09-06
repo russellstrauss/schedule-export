@@ -621,6 +621,7 @@ export async function fetchSchedule(page) {
 
   const referenceYear = new Date().getFullYear();
   const parsedRows = rawRows.map((r) => ({ ...r, when: parseCrew1DateTime(r.dateTime, referenceYear) }));
+  const detailCache = new Map();
 
   const entries = [];
   for (const rowObj of parsedRows) {
@@ -637,6 +638,8 @@ export async function fetchSchedule(page) {
       continue;
     }
 
+    const detail = rowObj.detailUrl ? await fetchEventDetail(page, rowObj.detailUrl, detailCache) : null;
+
     entries.push({
       source: sourceId,
       date: when.date,
@@ -651,8 +654,8 @@ export async function fetchSchedule(page) {
       status: "confirmed",
       notes: "",
       isCallCancelled: false,
-      offerDeadlineText: "",
-      offerState: "pending"
+      offerDeadlineText: detail?.offerDeadlineText || "",
+      offerState: detail?.offerState || "pending"
     });
   }
 

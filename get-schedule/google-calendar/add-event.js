@@ -431,6 +431,15 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 			eventStartedAt != null &&
 			Date.now() - eventStartedAt <= RECENT_PAST_EVENT_LOOKBACK_MS;
 		if (source === "crewOne" && isPastEvent) continue;
+		// IATSE calendar entries are meant to reflect the current active schedule,
+		// not a historical backlog. If a previously synced IATSE event has fallen off
+		// the active list and is now in the past, it should be removed so the calendar
+		// does not keep displaying stale old calls.
+		if (source === "iatse927" && isPastEvent) {
+			await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
+			deletedCount += 1;
+			continue;
+		}
 		if (!cancelled && !removeAbsent && !isRecentPastRhinoEvent) continue;
 
 		await deleteSourceEventByRowId(calendar, source, rowId, ev.id);

@@ -94,25 +94,79 @@ describe("crewOne", () => {
     expect(text).toContain("Parking in Ruby lot.");
   });
 
+  it("fetchSchedule preserves detail-page offer deadline text for reminder creation", async () => {
+    process.env.CREWONE_EMAIL = "a@b.com";
+    process.env.CREWONE_PASSWORD = "secret";
+
+    const page = {
+      async goto() {},
+      async waitForFunction() { return true; },
+      async waitForNetworkIdle() {},
+      async $(selector) { return { selector }; },
+      async focus() { return true; },
+      async type() { return true; },
+      url() { return "https://portal.crew1.com/dashboard"; },
+      evaluate(fn, ...args) {
+        const src = String(fn);
+        if (src.includes("scrollBy")) return Promise.resolve(true);
+        if (src.includes("window.location.pathname")) return Promise.resolve(true);
+        if (src.includes("document.querySelector(s).value = \"\"")) return Promise.resolve(null);
+        if (src.includes("querySelectorAll(\"button\")") || src.includes("querySelectorAll('button')")) {
+          return Promise.resolve(undefined);
+        }
+        if (src.includes("querySelectorAll('table')") && src.includes("detailLink")) {
+          return Promise.resolve([{ 
+            event: "A TEST SHOW",
+            where: "The Venue",
+            dateTime: "Fri Sep 11 8:00 AM",
+            detailUrl: "https://portal.crew1.com/view_upcoming/123"
+          }]);
+        }
+        if (src.includes("querySelectorAll(\"h1,h2,h3,h4,h5,h6\")") || src.includes("querySelectorAll('h1,h2,h3,h4,h5,h6')")) {
+          return Promise.resolve([{ textContent: "Upcoming Calls" }]);
+        }
+        if (src.includes("This offer closes")) {
+          return Promise.resolve({
+            eventTypeLine: "This is a CONCERT Event.",
+            calls: [],
+            generalNotes: "",
+            venueNotes: "",
+            offerDeadlineText: "This offer closes September 11, 2026 at 9:11 AM",
+            offerState: "pending"
+          });
+        }
+        return Promise.resolve(undefined);
+      }
+    };
+
+    const { fetchSchedule } = await import("./crewOne.js");
+    const entries = await fetchSchedule(page);
+
+    expect(entries[0].offerDeadlineText).toBe("This offer closes September 11, 2026 at 9:11 AM");
+    expect(entries[0].offerState).toBe("pending");
+    expect(buildCrewOneDeadlineReminderEvent(entries[0])).not.toBeNull();
+  });
+
   it("parses crew one offer deadlines and builds a reminder event", () => {
-    const deadline = parseCrewOneOfferDeadline("This offer closes July 24, 2026 at 9:00 AM");
+    const deadlineText = "This offer closes September 11, 2026 at 9:11 AM";
+    const deadline = parseCrewOneOfferDeadline(deadlineText);
     expect(deadline).toEqual({
-      month: 7,
-      day: 24,
+      month: 9,
+      day: 11,
       year: 2026,
       hours: 9,
-      minutes: 0,
-      text: "This offer closes July 24, 2026 at 9:00 AM"
+      minutes: 11,
+      text: deadlineText
     });
 
     const reminder = buildCrewOneDeadlineReminderEvent(
       {
         source: "crewOne",
-        date: "7/24/2026",
+        date: "9/11/2026",
         callTime: "08:00",
         show: "A TEST SHOW",
         venue: "The Venue",
-        offerDeadlineText: "This offer closes July 24, 2026 at 9:00 AM"
+        offerDeadlineText: deadlineText
       },
       deadline
     );
@@ -121,9 +175,9 @@ describe("crewOne", () => {
       source: "crewOne",
       kind: "deadlineReminder",
       summary: "Offer deadline: A TEST SHOW",
-      start: "2026-07-24T09:00:00",
-      end: "2026-07-24T09:30:00",
-      description: expect.stringContaining("This offer closes July 24, 2026 at 9:00 AM")
+      start: "2026-09-11T09:11:00",
+      end: "2026-09-11T09:41:00",
+      description: expect.stringContaining(deadlineText)
     });
   });
 
@@ -133,11 +187,11 @@ describe("crewOne", () => {
 
     const reminder = buildCrewOneDeadlineReminderEvent({
       source: "crewOne",
-      date: "7/24/2026",
+      date: "9/11/2026",
       callTime: "08:00",
       show: "A TEST SHOW",
       venue: "The Venue",
-      offerDeadlineText: "This offer closes July 24, 2026 at 9:00 AM",
+      offerDeadlineText: "This offer closes September 11, 2026 at 9:11 AM",
       offerState: state
     });
 
