@@ -1,5 +1,6 @@
-import { formatDateTimeForTimezone, isEventInFuture, scheduleRowId } from "../utils.js";
+import { formatDateTimeForTimezone, isEventInFuture } from "../utils.js";
 import { gotoPortalPage, configurePortalPage } from "../puppeteer.js";
+import { rememberOfferDeadline, recallOfferDeadline } from "./offer-deadline-cache.js";
 
 export const sourceId = "crewOne";
 
@@ -102,13 +103,17 @@ export function parseCrewOneOfferDeadline(text) {
 export function parseCrewOneOfferState(text) {
   const normalized = (text || "").toLowerCase();
 
-  if (/\baccepted?\b/.test(normalized) && !/accept or decline|accept\/decline|please accept|to accept/i.test(normalized)) {
+  // Require past-tense "accepted" so copy like "we will accept your response" stays pending.
+  if (
+    /\baccepted\b/.test(normalized) &&
+    !/accept or decline|accept\/decline|please accept|to accept|will accept/i.test(normalized)
+  ) {
     return "accepted";
   }
 
   if (
-    (/\bdenied?\b|\bdeclined?\b/.test(normalized)) &&
-    !/accept or decline|accept\/decline|please decline|to decline/i.test(normalized)
+    (/\bdenied\b|\bdeclined\b/.test(normalized)) &&
+    !/accept or decline|accept\/decline|please decline|to decline|accepting\/declining/i.test(normalized)
   ) {
     return "declined";
   }
@@ -116,10 +121,75 @@ export function parseCrewOneOfferState(text) {
   return "pending";
 }
 
+/** Dashboard action cells that must never be treated as a date/time. */
+export function isCrewOneActionCell(text) {
+  return /^(respond|info|view details)$/i.test(String(text || "").trim());
+}
+
+/**
+ * Map Crew One dashboard table cells using headers when available.
+ * Upcoming: Event | Where | Date/Time | info
+ * Offers: Event | Task/Job | Respond
+ * @param {string[]} cellTexts
+ * @param {string[]} headerTexts
+ * @param {string | null} detailUrl
+ */
+export function mapCrewOneDashboardRow(cellTexts, headerTexts = [], detailUrl = null) {
+  const cells = cellTexts.map((c) => String(c || "").trim());
+  const headers = headerTexts.map((h) => String(h || "").trim().toLowerCase());
+  const col = (re) => headers.findIndex((h) => re.test(h));
+
+  const eventIdx = col(/^event$/) >= 0 ? col(/^event$/) : 0;
+  const whereIdx = col(/^where$/);
+  const jobIdx = col(/task\/?job|^job$|^position$/);
+  const dateIdx = col(/date\/?time|^date$/);
+
+  const looksLikeDateTime = (t) => {
+    const norm = String(t || "").replace(/\s+/g, " ");
+    return (
+      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(norm) &&
+      /\d{1,2}:\d{2}\s*(AM|PM)/i.test(norm)
+    );
+  };
+
+  let dateTime = dateIdx >= 0 ? cells[dateIdx] || "" : "";
+  if (!dateTime) {
+    dateTime = cells.find((t) => looksLikeDateTime(t)) || "";
+  }
+  if (isCrewOneActionCell(dateTime)) dateTime = "";
+
+  const event = cells[eventIdx] || cells[0] || "";
+  let where = whereIdx >= 0 ? cells[whereIdx] || "" : "";
+  let position = jobIdx >= 0 ? cells[jobIdx] || "" : "";
+
+  // Offers layout fallback when headers are missing: Event | Task/Job | Respond
+  if (!position && !dateTime && cells.length >= 3 && isCrewOneActionCell(cells[cells.length - 1])) {
+    position = cells[1] || "";
+    where = whereIdx >= 0 ? where : "";
+  }
+
+  return {
+    event,
+    where,
+    position,
+    dateTime,
+    detailUrl: detailUrl || null
+  };
+}
+
+export function isCrewOneOfferUnconfirmed(entry) {
+  return String(entry?.offerState || "").toLowerCase() === "pending";
+}
+
+export function isCrewOneOfferDeclined(entry) {
+  const state = String(entry?.offerState || "").toLowerCase();
+  return state === "declined" || state === "denied";
+}
+
 export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOneOfferDeadline(entry?.offerDeadlineText)) {
   if (!entry || !deadline) return null;
   const offerState = String(entry.offerState || "pending").toLowerCase();
-  if (offerState === "accepted" || offerState === "declined" || offerState === "denied") {
+  if (!isCrewOneOfferUnconfirmed({ offerState })) {
     return null;
   }
 
@@ -128,7 +198,17 @@ export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOne
     return null;
   }
 
-  const rowId = entry.rowId || scheduleRowId(entry);
+  // Identity is the offer deadline itself (not a call row), so multi-call offers
+  // produce one reminder and sync/purge never collide with call events.
+  const deadlineDate = `${month}/${day}/${year}`;
+  const deadlineTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  const rowId = [
+    deadlineDate,
+    deadlineTime,
+    entry.show || "",
+    entry.venue || ""
+  ].join(" | ") + "|deadlineReminder";
+
   const location = [entry.venue, entry.location].filter(Boolean).join(" - ");
   const start = formatDateTimeForTimezone(year, month, day, hours, minutes);
   const end = formatDateTimeForTimezone(year, month, day, hours, minutes + 30);
@@ -136,7 +216,7 @@ export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOne
   return {
     source: sourceId,
     kind: "deadlineReminder",
-    rowId: `${rowId}|deadlineReminder`,
+    rowId,
     summary: `Offer deadline: ${entry.show}`,
     location,
     description: [`Deadline reminder for ${entry.show}`, "", deadline.text].join("\n"),
@@ -148,6 +228,10 @@ export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOne
       overrides: [{ method: "popup", minutes: 0 }]
     }
   };
+}
+
+export function isCrewOneDeadlineReminderRowId(rowId) {
+  return String(rowId || "").includes("|deadlineReminder");
 }
 
 /**
@@ -298,31 +382,83 @@ async function loginAndOpenDashboard(page, creds) {
 /**
  * @param {import("puppeteer").Page} page
  */
-async function scrapeUpcomingRows(page) {
-  return page.evaluate(() => {
+async function scrapePortalRows(page, headingPattern, allowGlobalFallback = false) {
+  return page.evaluate((headingPattern, allowGlobalFallback) => {
     const trim = (s) => (s || '').trim();
     const monthNames = /january|february|march|april|may|june|july|august|september|october|november|december/i;
+    const monthAbbr = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i;
     const timePattern = /\d{1,2}:\d{2}\s*(AM|PM)/i;
+    const headingRe = new RegExp(headingPattern, "i");
+    const isAction = (t) => /^(respond|info|view details)$/i.test(trim(t));
+    const looksLikeDateTime = (t) => {
+      const norm = trim(t).replace(/\s+/g, " ");
+      return (monthAbbr.test(norm) || monthNames.test(norm)) && timePattern.test(norm);
+    };
 
-    const extractFromTable = (table) =>
-      [...table.querySelectorAll('tbody tr')]
-        .filter((tr) => !tr.querySelector('th') && tr.querySelectorAll('td').length >= 3)
+    const mapRow = (cellTexts, headerTexts, detailUrl) => {
+      const cells = cellTexts.map(trim);
+      const headers = headerTexts.map((h) => trim(h).toLowerCase());
+      const col = (re) => headers.findIndex((h) => re.test(h));
+      const eventIdx = col(/^event$/) >= 0 ? col(/^event$/) : 0;
+      const whereIdx = col(/^where$/);
+      const jobIdx = col(/task\/?job|^job$|^position$/);
+      const dateIdx = col(/date\/?time|^date$/);
+
+      let dateTime = dateIdx >= 0 ? cells[dateIdx] || "" : "";
+      if (!dateTime) dateTime = cells.find((t) => looksLikeDateTime(t)) || "";
+      if (isAction(dateTime)) dateTime = "";
+
+      let where = whereIdx >= 0 ? cells[whereIdx] || "" : "";
+      let position = jobIdx >= 0 ? cells[jobIdx] || "" : "";
+      if (!position && !dateTime && cells.length >= 3 && isAction(cells[cells.length - 1])) {
+        position = cells[1] || "";
+      }
+
+      return {
+        event: cells[eventIdx] || cells[0] || "",
+        where,
+        position,
+        dateTime,
+        detailUrl: detailUrl || null
+      };
+    };
+
+    const extractFromTable = (table) => {
+      let headerTexts = [...table.querySelectorAll("thead th, thead td")].map((c) =>
+        trim(c.innerText || c.textContent)
+      );
+      if (headerTexts.length === 0) {
+        const headerRow = [...table.querySelectorAll("tr")].find((tr) =>
+          tr.querySelector("th")
+        );
+        if (headerRow) {
+          headerTexts = [...headerRow.querySelectorAll("th,td")].map((c) =>
+            trim(c.innerText || c.textContent)
+          );
+        }
+      }
+      return [...table.querySelectorAll("tbody tr, tr")]
+        .filter((tr) => !tr.querySelector("th") && tr.querySelectorAll("td").length >= 2)
         .map((tr) => {
-          const cells = [...tr.querySelectorAll('td')];
-          const detailLink = tr.querySelector('a[title="View Details"]') || tr.querySelector('td:last-child a');
-          return {
-            event: trim(cells[0].innerText || cells[0].textContent),
-            where: trim(cells[1].innerText || cells[1].textContent),
-            dateTime: trim(cells[2].innerText || cells[2].textContent),
-            detailUrl: detailLink?.href || null
-          };
+          const cells = [...tr.querySelectorAll("td")];
+          const cellTexts = cells.map((c) => trim(c.innerText || c.textContent));
+          const detailLink =
+            tr.querySelector('a[title="View Details"]') ||
+            tr.querySelector('a[href*="/response/"]') ||
+            tr.querySelector('a[href*="/view_upcoming/"]') ||
+            [...tr.querySelectorAll("a")].find((a) =>
+              /respond|view details|^info$/i.test(trim(a.textContent || ""))
+            ) ||
+            tr.querySelector("td:last-child a");
+          return mapRow(cellTexts, headerTexts, detailLink?.href || null);
         })
-        .filter((row) => row.event);
+        .filter((row) => row.event && !isAction(row.event));
+    };
 
     // Locate the "Upcoming Calls" heading (case-insensitive) and search its
     // ancestor for multiple candidate row containers (tables, lists, cards).
     const heading = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].find((h) =>
-      /Upcoming Calls/i.test((h.textContent || '').trim())
+      headingRe.test((h.textContent || '').trim())
     );
 
     const results = [];
@@ -347,11 +483,31 @@ async function scrapeUpcomingRows(page) {
             // Heuristic extraction: lines, find event/where/date/time
             const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
             if (lines.length < 2) continue;
-            const detailLink = el.querySelector('a[href*="/view_upcoming/"]') || el.querySelector('a[title="View Details"]') || el.querySelector('a');
-            const eventLine = lines.find((l) => !/info|view|details/i.test(l) && !timePattern.test(l) && !monthNames.test(l)) || lines[0];
-            const dateLine = lines.find((l) => monthNames.test(l) || /\bMon|Tue|Wed|Thu|Fri|Sat|Sun\b/i.test(l)) || '';
-            const timeLine = lines.find((l) => timePattern.test(l)) || '';
-            results.push({ event: eventLine, where: '', dateTime: [dateLine, timeLine].filter(Boolean).join(' '), detailUrl: detailLink?.href || null });
+            const detailLink =
+              el.querySelector('a[href*="/view_upcoming/"]') ||
+              el.querySelector('a[href*="/response/"]') ||
+              el.querySelector('a[title="View Details"]') ||
+              el.querySelector('a');
+            const eventLine =
+              lines.find(
+                (l) =>
+                  !/info|view|details|respond/i.test(l) &&
+                  !timePattern.test(l) &&
+                  !monthNames.test(l) &&
+                  !monthAbbr.test(l)
+              ) || lines[0];
+            const dateLine =
+              lines.find(
+                (l) => monthNames.test(l) || monthAbbr.test(l) || /\bMon|Tue|Wed|Thu|Fri|Sat|Sun\b/i.test(l)
+              ) || "";
+            const timeLine = lines.find((l) => timePattern.test(l)) || "";
+            results.push({
+              event: eventLine,
+              where: "",
+              position: "",
+              dateTime: [dateLine, timeLine].filter(Boolean).join(" "),
+              detailUrl: detailLink?.href || null
+            });
           }
         }
 
@@ -361,6 +517,7 @@ async function scrapeUpcomingRows(page) {
     }
 
     if (results.length > 0) return results;
+    if (!allowGlobalFallback) return results;
 
     // Fallback to scanning all tables in the document
     const allTables = [...document.querySelectorAll('table')];
@@ -381,15 +538,38 @@ async function scrapeUpcomingRows(page) {
       const text = (block && (block.innerText || block.textContent)) || (a.innerText || a.textContent) || '';
       const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       if (lines.length === 0) continue;
-      let eventLine = lines.find((l) => !/info|view|details/i.test(l) && !timePattern.test(l) && !monthNames.test(l));
+      let eventLine = lines.find(
+        (l) =>
+          !/info|view|details|respond/i.test(l) &&
+          !timePattern.test(l) &&
+          !monthNames.test(l) &&
+          !monthAbbr.test(l)
+      );
       if (!eventLine) eventLine = lines[0];
-      const dateLine = lines.find((l) => monthNames.test(l) || /\bMon|Tue|Wed|Thu|Fri|Sat|Sun\b/i.test(l)) || '';
-      const timeLine = lines.find((l) => timePattern.test(l)) || '';
-      results.push({ event: eventLine, where: '', dateTime: [dateLine, timeLine].filter(Boolean).join(' '), detailUrl: href });
+      const dateLine =
+        lines.find(
+          (l) => monthNames.test(l) || monthAbbr.test(l) || /\bMon|Tue|Wed|Thu|Fri|Sat|Sun\b/i.test(l)
+        ) || "";
+      const timeLine = lines.find((l) => timePattern.test(l)) || "";
+      results.push({
+        event: eventLine,
+        where: "",
+        position: "",
+        dateTime: [dateLine, timeLine].filter(Boolean).join(" "),
+        detailUrl: href
+      });
     }
 
     return results;
-  });
+  }, headingPattern, allowGlobalFallback);
+}
+
+async function scrapeUpcomingRows(page) {
+  return scrapePortalRows(page, "Upcoming Calls", true);
+}
+
+async function scrapeOfferRows(page) {
+  return scrapePortalRows(page, "Offers Needing Your Response", false);
 }
 
 /**
@@ -397,27 +577,61 @@ async function scrapeUpcomingRows(page) {
  */
 async function scrapeEventDetail(page) {
   return page.evaluate(() => {
+    const trim = (s) => (s || "").trim();
     const bodyText = document.body.innerText || "";
 
     const eventTypeMatch = bodyText.match(/This is an? [A-Z]+ Event\.?/i);
     const eventTypeLine = eventTypeMatch ? eventTypeMatch[0].trim() : "";
 
+    const venueMatch = bodyText.match(/\nat\s+([^\n\r]+)/);
+    const venue = venueMatch ? trim(venueMatch[1]) : "";
+
     const callTable = [...document.querySelectorAll("table")].find((t) =>
-      /job\/task/i.test(t.textContent || "")
+      /job\/task|start date\/time/i.test(t.textContent || "")
     );
-    const calls = callTable
-      ? [...callTable.querySelectorAll("tbody tr")]
-          .filter((tr) => tr.querySelectorAll("td").length >= 2)
-          .map((tr) => {
-            const cells = [...tr.querySelectorAll("td")];
-            return {
-              job: (cells[0].innerText || cells[0].textContent).trim(),
-              startDateTime: (cells[1].innerText || cells[1].textContent).trim(),
-              contractorNotes: (cells[2]?.innerText || cells[2]?.textContent || "").trim()
-            };
-          })
-          .filter((c) => c.job && c.startDateTime)
-      : [];
+
+    let calls = [];
+    if (callTable) {
+      const allRows = [...callTable.querySelectorAll("tr")];
+      const headerRow = allRows.find((tr) =>
+        /job\/task|start date\/time|accept\?/i.test(tr.textContent || "")
+      );
+      const resolvedHeaders = headerRow
+        ? [...headerRow.querySelectorAll("th,td")].map((c) =>
+            trim(c.innerText || c.textContent).toLowerCase()
+          )
+        : [];
+
+      const col = (re) => resolvedHeaders.findIndex((h) => re.test(h));
+      const jobIdx = col(/job\/task|^job$|^task$/);
+      const startIdx = col(/start date\/time|date\/time|^date$/);
+      const notesIdx = col(/contractor notes|notes/);
+
+      calls = allRows
+        .filter((tr) => tr.querySelectorAll("td").length >= 2)
+        .filter((tr) => tr !== headerRow)
+        .map((tr) => {
+          const cells = [...tr.querySelectorAll("td")].map((c) =>
+            trim(c.innerText || c.textContent)
+          );
+          const startDateTime =
+            startIdx >= 0
+              ? cells[startIdx] || ""
+              : cells.find(
+                  (t) =>
+                    /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(t) &&
+                    /\d{1,2}:\d{2}\s*(AM|PM)/i.test(t)
+                ) ||
+                cells[1] ||
+                "";
+          const job =
+            jobIdx >= 0 ? cells[jobIdx] || "" : startIdx === 1 ? "" : cells[0] || "";
+          const contractorNotes =
+            notesIdx >= 0 ? cells[notesIdx] || "" : cells[2] || "";
+          return { job, startDateTime, contractorNotes };
+        })
+        .filter((c) => c.startDateTime && !/^accept\??$/i.test(c.startDateTime));
+    }
 
     const sliceSection = (startLabel, endLabel) => {
       const start = bodyText.indexOf(startLabel);
@@ -433,14 +647,39 @@ async function scrapeEventDetail(page) {
     const venueNotes = sliceSection("VENUE NOTE:", "©");
     const offerDeadlineText = bodyText.match(/this offer closes[^.\n\r]*/i)?.[0].trim() || "";
     const normalizedBodyText = (bodyText || "").toLowerCase();
-    const offerState = /\baccepted?\b/.test(normalizedBodyText)
+    const isResponsePage =
+      /your offer response/i.test(bodyText) ||
+      /\/response\//i.test(location.pathname || "");
+    const hasResponseUi =
+      /accept\?/i.test(bodyText) ||
+      /submit your response/i.test(bodyText) ||
+      /accepting\/declining/i.test(bodyText);
+    const clearlyAccepted =
+      /\baccepted\b/.test(normalizedBodyText) &&
+      !/accept or decline|accept\/decline|please accept|to accept|will accept/i.test(
+        normalizedBodyText
+      );
+    const clearlyDeclined =
+      (/\bdenied\b|\bdeclined\b/.test(normalizedBodyText)) &&
+      !/accept or decline|accept\/decline|please decline|to decline|accepting\/declining/i.test(
+        normalizedBodyText
+      );
+    const looksLikeOpenOffer =
+      Boolean(offerDeadlineText) ||
+      isResponsePage ||
+      hasResponseUi ||
+      /accept or decline|accept\/decline|please accept|please decline/i.test(bodyText);
+    const offerState = clearlyAccepted
       ? "accepted"
-      : /\bdenied?\b|\bdeclined?\b/.test(normalizedBodyText)
+      : clearlyDeclined
         ? "declined"
-        : "pending";
+        : looksLikeOpenOffer
+          ? "pending"
+          : "accepted";
 
     return {
       eventTypeLine: eventTypeLine || "",
+      venue,
       calls,
       generalNotes,
       venueNotes,
@@ -597,22 +836,36 @@ export async function fetchSchedule(page) {
     })
   ).catch(() => {});
 
-  const rawRows = await scrapeUpcomingRows(page);
+  const upcomingRows = (await scrapeUpcomingRows(page)).map((r) => ({ ...r, section: "upcoming" }));
+  const offerRows = (await scrapeOfferRows(page)).map((r) => ({ ...r, section: "offers" }));
+  const rawRows = [];
+  const seenRowKeys = new Set();
+  for (const row of [...upcomingRows, ...offerRows]) {
+    const key = `${(row.event || "").trim().toLowerCase()}|${(row.dateTime || "").trim().toLowerCase()}|${row.detailUrl || ""}`;
+    if (seenRowKeys.has(key)) continue;
+    seenRowKeys.add(key);
+    rawRows.push(row);
+  }
   // Prefer the dashboard rows; fall back to the dedicated list page below.
 
-  // If the dashboard produced too few rows, try the portal's dedicated
+  // If the dashboard produced too few upcoming rows, try the portal's dedicated
   // upcoming list page which sometimes contains the full event list.
-  if (!rawRows || rawRows.length <= 1) {
+  const upcomingCount = rawRows.filter((r) => r.section === "upcoming").length;
+  if (upcomingCount <= 1) {
     try {
       const base = creds.loginUrl.replace(/\/$/, "");
       const listUrl = new URL('/view_upcoming', base).toString();
       await gotoPortalPage(page, listUrl);
       await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => {});
       const altRows = await scrapeUpcomingRows(page);
-      if (altRows && altRows.length > (rawRows ? rawRows.length : 0)) {
-        // use altRows instead of rawRows (mutate rawRows variable)
-        rawRows.length = 0;
-        Array.prototype.push.apply(rawRows, altRows);
+      if (altRows && altRows.length > upcomingCount) {
+        for (const row of altRows) {
+          const tagged = { ...row, section: "upcoming" };
+          const key = `${(tagged.event || "").trim().toLowerCase()}|${(tagged.dateTime || "").trim().toLowerCase()}|${tagged.detailUrl || ""}`;
+          if (seenRowKeys.has(key)) continue;
+          seenRowKeys.add(key);
+          rawRows.push(tagged);
+        }
       }
     } catch (e) {
       // ignore; keep original rawRows
@@ -625,38 +878,89 @@ export async function fetchSchedule(page) {
 
   const entries = [];
   for (const rowObj of parsedRows) {
-    const when = rowObj.when;
-    if (!when) {
-      if (rowObj.dateTime && String(rowObj.dateTime).trim() !== "") {
-        console.warn(`[crewOne] Could not parse date/time: "${rowObj.dateTime}" for ${rowObj.event}`);
-      }
-      continue;
-    }
-
-    const showLower = rowObj.event.toLowerCase();
+    const showLower = (rowObj.event || "").toLowerCase();
     if (showLower.includes("cancelled") || showLower.includes("canceled")) {
       continue;
     }
 
     const detail = rowObj.detailUrl ? await fetchEventDetail(page, rowObj.detailUrl, detailCache) : null;
+    const offerState =
+      rowObj.section === "offers"
+        ? detail?.offerState === "declined"
+          ? "declined"
+          : "pending"
+        : detail?.offerState || "accepted";
 
-    entries.push({
-      source: sourceId,
-      date: when.date,
-      callTime: when.callTime,
-      show: rowObj.event,
-      venue: rowObj.where,
-      location: "",
-      client: "",
-      type: "",
-      position: "",
-      details: "",
-      status: "confirmed",
-      notes: "",
-      isCallCancelled: false,
-      offerDeadlineText: detail?.offerDeadlineText || "",
-      offerState: detail?.offerState || "pending"
-    });
+    let offerDeadlineText = detail?.offerDeadlineText || "";
+    if (offerDeadlineText && rowObj.detailUrl) {
+      rememberOfferDeadline(rowObj.detailUrl, offerDeadlineText);
+    } else if (!offerDeadlineText && rowObj.detailUrl) {
+      offerDeadlineText = recallOfferDeadline(rowObj.detailUrl);
+    }
+    if (rowObj.section === "offers" && offerState === "pending" && !offerDeadlineText) {
+      console.warn(
+        `[crewOne] No offer deadline text for ${rowObj.event}` +
+          (rowObj.detailUrl ? ` (${rowObj.detailUrl})` : "") +
+          " — deadline reminder will not be created"
+      );
+    }
+
+    /** @param {{ date: string, callTime: string, venue?: string, position?: string }} whenParts */
+    const pushEntry = (whenParts) => {
+      entries.push({
+        source: sourceId,
+        date: whenParts.date,
+        callTime: whenParts.callTime,
+        show: rowObj.event,
+        venue: whenParts.venue || rowObj.where || detail?.venue || "",
+        location: "",
+        client: "",
+        type: "",
+        position: whenParts.position || rowObj.position || "",
+        details: "",
+        status: "confirmed",
+        notes: "",
+        isCallCancelled: false,
+        offerDeadlineText,
+        offerState
+      });
+    };
+
+    if (rowObj.when) {
+      pushEntry({
+        date: rowObj.when.date,
+        callTime: rowObj.when.callTime,
+        venue: rowObj.where || detail?.venue || "",
+        position: rowObj.position || ""
+      });
+      continue;
+    }
+
+    // Offers table has no Date/Time column; expand calls from the response page.
+    const detailCalls = detail?.calls || [];
+    if (detailCalls.length > 0) {
+      let expanded = 0;
+      for (const call of detailCalls) {
+        const when = parseCrew1DateTime(call.startDateTime, referenceYear);
+        if (!when) continue;
+        pushEntry({
+          date: when.date,
+          callTime: when.callTime,
+          venue: detail?.venue || rowObj.where || "",
+          position: call.job || rowObj.position || ""
+        });
+        expanded += 1;
+      }
+      if (expanded > 0) continue;
+    }
+
+    if (
+      rowObj.dateTime &&
+      String(rowObj.dateTime).trim() !== "" &&
+      !isCrewOneActionCell(rowObj.dateTime)
+    ) {
+      console.warn(`[crewOne] Could not parse date/time: "${rowObj.dateTime}" for ${rowObj.event}`);
+    }
   }
 
   return entries;

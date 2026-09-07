@@ -7,7 +7,8 @@ import {
   eventMatchesSource,
   rowIdFromEvent,
   purgeSourceEvents,
-  purgeOrphanedSourceEvents
+  purgeOrphanedSourceEvents,
+  purgeCrewOneDeadlineReminderEvents
 } from "./add-event.js";
 
 const mockList = vi.fn();
@@ -564,6 +565,83 @@ describe("purgeOrphanedSourceEvents", () => {
     mockList.mockResolvedValueOnce({ data: { items: [absent] } });
 
     await purgeOrphanedSourceEvents({}, "crewOne", ["6/13/2026 | 08:00 | OTHER | Other Venue"]);
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it("removeAbsent does not delete crewOne deadline reminder events", async () => {
+    const reminder = {
+      id: "evt-deadline",
+      summary: "Offer deadline: CHAYANNE 2026",
+      extendedProperties: {
+        private: {
+          scheduleSource: "crewOne",
+          scheduleRowId: "9/11/2026 | 09:11 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder"
+        }
+      }
+    };
+    mockList.mockResolvedValueOnce({ data: { items: [reminder] } });
+
+    await purgeOrphanedSourceEvents({}, "crewOne", ["9/20/2026 | 08:00 | CHAYANNE 2026 | STATE FARM ARENA"], {
+      removeAbsent: true
+    });
+
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+});
+
+describe("purgeCrewOneDeadlineReminderEvents", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDelete.mockResolvedValue({});
+  });
+
+  it("keeps active deadline reminders and deletes stale ones", async () => {
+    const activeRowId = "9/11/2026 | 09:11 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder";
+    const staleRowId = "9/10/2026 | 09:00 | OLD SHOW | Arena|deadlineReminder";
+    mockList.mockResolvedValueOnce({
+      data: {
+        items: [
+          {
+            id: "evt-active",
+            extendedProperties: {
+              private: { scheduleSource: "crewOne", scheduleRowId: activeRowId }
+            }
+          },
+          {
+            id: "evt-stale",
+            extendedProperties: {
+              private: { scheduleSource: "crewOne", scheduleRowId: staleRowId }
+            }
+          }
+        ]
+      }
+    });
+
+    await purgeCrewOneDeadlineReminderEvents({}, [activeRowId]);
+
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete.mock.calls[0][0].eventId).toBe(
+      deterministicIdFor("crewOne", staleRowId)
+    );
+  });
+
+  it("keeps a deadline reminder for a still-pending offer even without rebuilt row ids", async () => {
+    const rowId = "9/11/2026 | 09:11 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder";
+    mockList.mockResolvedValueOnce({
+      data: {
+        items: [
+          {
+            id: "evt-chayanne-deadline",
+            extendedProperties: {
+              private: { scheduleSource: "crewOne", scheduleRowId: rowId }
+            }
+          }
+        ]
+      }
+    });
+
+    await purgeCrewOneDeadlineReminderEvents({}, [], { keepShows: ["CHAYANNE 2026"] });
 
     expect(mockDelete).not.toHaveBeenCalled();
   });

@@ -269,6 +269,8 @@ export const isCallCancelledLabel = (text) => {
  */
 export const isEventCancelled = (entry) => {
   if (entry.isCallCancelled) return true;
+  const offerState = String(entry.offerState || "").toLowerCase();
+  if (offerState === "declined" || offerState === "denied") return true;
 
   const rowText = normalizeTextForMatch(
     [entry.show, entry.status, entry.details, entry.notes]
@@ -483,11 +485,16 @@ export const toGoogleEvent = (entry, options = {}) => {
   const startTimeStr = `${pad(startParts.hours)}:${pad(startParts.minutes)}`;
   const formattedTime = formatTimeForTitle(startTimeStr);
 
+  const isCrewOneUnconfirmed =
+    source === "crewOne" && String(entry.offerState || "").toLowerCase() === "pending";
+
   let summary;
   if (source === "rhino") {
     const isCalled = entry.status?.toLowerCase() === "called";
     const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
     summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
+  } else if (isCrewOneUnconfirmed) {
+    summary = `UNCONFIRMED => ${formattedTime} ${entry.show}`;
   } else {
     summary = `${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`;
   }
@@ -513,7 +520,7 @@ export const toGoogleEvent = (entry, options = {}) => {
     description,
     start: startStr,
     end: endStr,
-    status: normalizeStatus(entry.status),
+    status: isCrewOneUnconfirmed ? "tentative" : normalizeStatus(entry.status),
     rowId,
     source
   };

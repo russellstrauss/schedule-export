@@ -139,7 +139,7 @@ export async function syncEvent(auth, event) {
 	const reconciled = await reconcileMatches(matchingEvents);
 	if (reconciled) return reconciled;
 
-	if (source === "crewOne") {
+	if (source === "crewOne" && !String(event.rowId || "").includes("|deadlineReminder")) {
 		const matchKey = crewOneRowMatchKey(event.rowId);
 		const existing = await findCrewOneEventByMatchKey(calendar, source, matchKey);
 		if (existing?.id) {
@@ -176,14 +176,26 @@ export async function addEvent(auth, event) {
 	return syncEvent(auth, event);
 }
 
-export async function purgeCrewOneDeadlineReminderEvents(auth) {
+export async function purgeCrewOneDeadlineReminderEvents(auth, activeReminderRowIds = [], options = {}) {
 	const calendar = google.calendar({ version: "v3", auth });
 	const timeMin = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 	const sourceEvents = await listSourceEvents(calendar, "crewOne", timeMin);
+	const activeSet = new Set(
+		(activeReminderRowIds || []).map((rowId) => normalizeScheduleRowId(rowId))
+	);
+	const keepShows = new Set(
+		(options.keepShows || []).map((show) => String(show || "").trim().toLowerCase()).filter(Boolean)
+	);
 
 	for (const ev of sourceEvents) {
 		const rowId = rowIdFromEvent(ev, "crewOne") || "";
 		if (!rowId.includes("|deadlineReminder")) continue;
+		if (activeSet.has(normalizeScheduleRowId(rowId))) continue;
+		// Crew One strips "This offer closes..." after expiry. Keep an existing
+		// deadline reminder while that show is still a pending offer.
+		const parts = rowId.replace(/\|deadlineReminder$/i, "").split(" | ");
+		const show = (parts[2] || "").trim().toLowerCase();
+		if (show && keepShows.has(show)) continue;
 		await deleteSourceEventByRowId(calendar, "crewOne", rowId, ev.id);
 	}
 }
@@ -410,6 +422,8 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 	for (const ev of sourceEvents) {
 		const rowId = rowIdFromEvent(ev, source);
 		if (!rowId) continue;
+		// Deadline reminders are reconciled separately via purgeCrewOneDeadlineReminderEvents.
+		if (source === "crewOne" && rowId.includes("|deadlineReminder")) continue;
 
 		// Still on the schedule -> always keep.
 		if (rowIdInSet(source, rowId, activeSet, activeRelaxedKeys)) continue;

@@ -151,6 +151,26 @@ describe('isEventCancelled', () => {
     expect(isEventCancelled(entry)).toBe(false);
   });
 
+  it('should return true for declined Crew One offers', () => {
+    expect(
+      isEventCancelled({
+        show: 'A TEST SHOW',
+        offerState: 'declined',
+        isCallCancelled: false
+      })
+    ).toBe(true);
+  });
+
+  it('should return false for pending Crew One offers', () => {
+    expect(
+      isEventCancelled({
+        show: 'A TEST SHOW',
+        offerState: 'pending',
+        isCallCancelled: false
+      })
+    ).toBe(false);
+  });
+
   it('should handle missing show name', () => {
     const entry = {
       isCallCancelled: false
@@ -302,6 +322,48 @@ describe('toGoogleEvent', () => {
 
     expect(result.summary).toBe('7:30am SECOND PORTAL GIG');
     expect(result.source).toBe('crewOne');
+  });
+
+  it('prefixes Crew One pending offers with UNCONFIRMED and marks them tentative', () => {
+    const entry = {
+      date: '9/11/2026',
+      callTime: '08:00',
+      show: 'A TEST SHOW',
+      venue: 'The Venue',
+      location: '',
+      position: '',
+      type: '',
+      status: 'confirmed',
+      offerState: 'pending',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry, { source: 'crewOne' });
+
+    expect(result.summary).toBe('UNCONFIRMED => 7:30am A TEST SHOW');
+    expect(result.status).toBe('tentative');
+  });
+
+  it('keeps accepted Crew One events without an UNCONFIRMED prefix', () => {
+    const entry = {
+      date: '9/11/2026',
+      callTime: '08:00',
+      show: 'A TEST SHOW',
+      venue: 'The Venue',
+      location: '',
+      position: '',
+      type: '',
+      status: 'confirmed',
+      offerState: 'accepted',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry, { source: 'crewOne' });
+
+    expect(result.summary).toBe('7:30am A TEST SHOW');
+    expect(result.status).toBe('confirmed');
   });
 
   it('builds IATSE description with line breaks and Load In Address label', () => {

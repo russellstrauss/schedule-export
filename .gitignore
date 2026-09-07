@@ -4,3 +4,4 @@ node_modules
 **/token.json
 **/credentials.json
 .cursorinclude
+get-schedule/sources/.crewone-offer-deadlines.json

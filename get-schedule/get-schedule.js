@@ -67,14 +67,26 @@ async function syncPortalSources(browser, portalSourceIds) {
       const cancelledRowIds = cancelledEntries.map((entry) => scheduleRowId(entry));
       const reminderEvents =
         sourceId === "crewOne"
+          ? [
+              ...new Map(
+                entries
+                  .map((entry) => buildCrewOneDeadlineReminderEvent(entry))
+                  .filter(Boolean)
+                  .map((event) => [event.rowId, event])
+              ).values()
+            ]
+          : [];
+      const pendingOfferShows =
+        sourceId === "crewOne"
           ? entries
-              .map((entry) => buildCrewOneDeadlineReminderEvent(entry))
-              .filter(Boolean)
+              .filter((entry) => String(entry.offerState || "").toLowerCase() === "pending")
+              .map((entry) => entry.show)
           : [];
 
       syncPlanBySource.set(sourceId, {
         googleEvents: filterAndMapEvents(entries, sourceId),
         reminderEvents,
+        pendingOfferShows,
         activeRowIds,
         cancelledRowIds
       });
@@ -98,13 +110,17 @@ async function syncPortalSources(browser, portalSourceIds) {
 
   let auth = await authorize();
 
-  for (const [sourceId, { googleEvents, reminderEvents, activeRowIds, cancelledRowIds }] of syncPlanBySource) {
+  for (const [sourceId, { googleEvents, reminderEvents, pendingOfferShows, activeRowIds, cancelledRowIds }] of syncPlanBySource) {
     // CrewOne's dashboard is a complete snapshot of all upcoming calls, so a call
     // that's no longer listed has been taken off the schedule and should be removed.
     const removeAbsent = sourceId === "crewOne";
     auth = await withAuthRetry(auth, async (a) => {
       if (sourceId === "crewOne") {
-        await purgeCrewOneDeadlineReminderEvents(a);
+        await purgeCrewOneDeadlineReminderEvents(
+          a,
+          reminderEvents.map((event) => event.rowId),
+          { keepShows: pendingOfferShows }
+        );
       }
       await purgeOrphanedSourceEvents(a, sourceId, activeRowIds, { cancelledRowIds, removeAbsent });
       return a;
