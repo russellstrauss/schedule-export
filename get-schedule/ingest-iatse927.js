@@ -12,7 +12,7 @@ import { isFirestoreProjectIdError } from "./iatse927-firestore-auth.js";
 import { resolveScheduleEntriesWithValidation, isGeminiUnavailableError } from "./iatse927-gemini.js";
 import { sourceId } from "./sources/iatse927.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
-import { isEventCancelled, logAndMapEvents, scheduleRowId, isEventInFuture, parseScheduleDateParts } from "./utils.js";
+import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
 
 let iatseSyncInFlight = null;
 let lastSuccessfulIatseSchedule = null;
@@ -39,7 +39,6 @@ function messageSnapshotKey(messages) {
 async function syncIatse927FromMessagesInternal(messages) {
   console.log(`🌐 Fetching schedule from ${sourceId}...`);
   const { entries, warnings } = await resolveScheduleEntriesWithValidation(messages);
-  const validEntries = entries.filter((entry) => !isEventCancelled(entry));
   const cancelledEntries = entries.filter((entry) => isEventCancelled(entry));
   // Map entries to Google events filtering strictly by current time to avoid
   // re-syncing past events that were referenced in old messages.
@@ -195,20 +194,4 @@ export async function storeIatse927Message(body) {
     }
     throw err;
   }
-}
-
-/**
- * @param {{ text?: string; messageId?: string }} body
- * @returns {Promise<{ stored: boolean; id: string }>}
- */
-export async function ingestIatse927(body) {
-  return storeIatse927Message(body);
-}
-
-/**
- * Re-parse Firestore messages and sync calendar (run after ingest response is sent).
- * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null>}
- */
-export async function syncIatse927AfterIngest() {
-  return trySyncIatse927FromStore();
 }

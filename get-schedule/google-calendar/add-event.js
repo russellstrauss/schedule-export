@@ -1,13 +1,18 @@
 ﻿// get-schedule/google-calendar/add-event.js
 import crypto from "crypto";
 import { google } from "googleapis";
-import { normalizeScheduleRowId, crewOneRowMatchKey, rhinoRowMatchKey } from "../utils.js";
+import { normalizeScheduleRowId, crewOneRowMatchKey } from "../utils.js";
+import { DEFAULT_TIMEZONE } from "../sources/types.js";
+import {
+  RECENT_PAST_EVENT_LOOKBACK_MS,
+  getSourcePurgePolicy,
+  isDeadlineReminderRowId,
+  rowIdInSet
+} from "./purge-policy.js";
 
 /** Configuration */
-const DEFAULT_TIMEZONE = "America/New_York";
 const ID_LENGTH = 40;
 const PURGE_LOOKBACK_YEARS = 2;
-const RECENT_PAST_EVENT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
 /** Build a stable, URL-safe id for a source row */
 export function deterministicIdFor(source, rowId) {
@@ -139,7 +144,7 @@ export async function syncEvent(auth, event) {
 	const reconciled = await reconcileMatches(matchingEvents);
 	if (reconciled) return reconciled;
 
-	if (source === "crewOne" && !String(event.rowId || "").includes("|deadlineReminder")) {
+	if (source === "crewOne" && !isDeadlineReminderRowId(event.rowId)) {
 		const matchKey = crewOneRowMatchKey(event.rowId);
 		const existing = await findCrewOneEventByMatchKey(calendar, source, matchKey);
 		if (existing?.id) {
@@ -189,7 +194,7 @@ export async function purgeCrewOneDeadlineReminderEvents(auth, activeReminderRow
 
 	for (const ev of sourceEvents) {
 		const rowId = rowIdFromEvent(ev, "crewOne") || "";
-		if (!rowId.includes("|deadlineReminder")) continue;
+		if (!isDeadlineReminderRowId(rowId)) continue;
 		if (activeSet.has(normalizeScheduleRowId(rowId))) continue;
 		// Crew One strips "This offer closes..." after expiry. Keep an existing
 		// deadline reminder while that show is still a pending offer.
@@ -242,26 +247,6 @@ async function findCrewOneEventByMatchKey(calendar, source, matchKey) {
 			return rowId && crewOneRowMatchKey(rowId) === matchKey;
 		}) || null
 	);
-}
-
-/**
- * True when a calendar event's stored rowId matches a row in the given set.
- * Mirrors how rows are matched for both the "still active" and "cancelled" checks,
- * including the relaxed source-specific fallbacks: CrewOne ignores detail-page
- * position/type drift, Rhino ignores call-time drift.
- * @param {string} source
- * @param {string} rowId
- * @param {Set<string>} normalizedSet
- * @param {Set<string> | null} relaxedKeys
- */
-function rowIdInSet(source, rowId, normalizedSet, relaxedKeys) {
-	const normalized = normalizeScheduleRowId(rowId);
-	if (normalizedSet.has(normalized)) return true;
-	if (relaxedKeys) {
-		if (source === "crewOne" && relaxedKeys.has(crewOneRowMatchKey(rowId))) return true;
-		if (source === "rhino" && relaxedKeys.has(rhinoRowMatchKey(rowId))) return true;
-	}
-	return false;
 }
 
 /**
@@ -381,6 +366,7 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 	const futureOnly = options.futureOnly !== false;
 	const cancelledRowIds = options.cancelledRowIds || [];
 	const removeAbsent = options.removeAbsent === true;
+	const policy = getSourcePurgePolicy(source);
 
 	const activeSet = new Set(activeRowIds.map(normalizeScheduleRowId));
 	const cancelledSet = new Set(cancelledRowIds.map(normalizeScheduleRowId));
@@ -388,14 +374,12 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 	// cancelled rows whose identity drifted (CrewOne detail position/type, Rhino call
 	// time). Active matching uses the relaxed key only for CrewOne; Rhino relaxes the
 	// cancelled match only, which is safe because active rows are matched exactly first.
-	const activeRelaxedKeys =
-		source === "crewOne" ? new Set(activeRowIds.map(crewOneRowMatchKey)) : null;
-	const cancelledRelaxedKeys =
-		source === "crewOne"
-			? new Set(cancelledRowIds.map(crewOneRowMatchKey))
-			: source === "rhino"
-				? new Set(cancelledRowIds.map(rhinoRowMatchKey))
-				: null;
+	const activeRelaxedKeys = policy.activeMatchKey
+		? new Set(activeRowIds.map(policy.activeMatchKey))
+		: null;
+	const cancelledRelaxedKeys = policy.cancelledMatchKey
+		? new Set(cancelledRowIds.map(policy.cancelledMatchKey))
+		: null;
 
 	// Hard guard: an empty schedule snapshot almost always means a failed or partial
 	// fetch (login issue, portal outage, empty table). Never delete anything in that
@@ -423,7 +407,7 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 		const rowId = rowIdFromEvent(ev, source);
 		if (!rowId) continue;
 		// Deadline reminders are reconciled separately via purgeCrewOneDeadlineReminderEvents.
-		if (source === "crewOne" && rowId.includes("|deadlineReminder")) continue;
+		if (policy.skipDeadlineReminders && isDeadlineReminderRowId(rowId)) continue;
 
 		// Still on the schedule -> always keep.
 		if (rowIdInSet(source, rowId, activeSet, activeRelaxedKeys)) continue;
@@ -441,15 +425,15 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 		const eventStartedAt = ev.start?.dateTime ? new Date(ev.start.dateTime).getTime() : null;
 		const isPastEvent = eventStartedAt != null && eventStartedAt < Date.now();
 		const isRecentPastRhinoEvent =
-			source === "rhino" &&
+			policy.deleteRecentPastIfAbsent &&
 			eventStartedAt != null &&
 			Date.now() - eventStartedAt <= RECENT_PAST_EVENT_LOOKBACK_MS;
-		if (source === "crewOne" && isPastEvent) continue;
+		if (policy.keepPastEvents && isPastEvent) continue;
 		// IATSE calendar entries are meant to reflect the current active schedule,
 		// not a historical backlog. If a previously synced IATSE event has fallen off
 		// the active list and is now in the past, it should be removed so the calendar
 		// does not keep displaying stale old calls.
-		if (source === "iatse927" && isPastEvent) {
+		if (policy.deletePastIfAbsent && isPastEvent) {
 			await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
 			deletedCount += 1;
 			continue;
@@ -459,9 +443,4 @@ export async function purgeOrphanedSourceEvents(auth, source, activeRowIds, opti
 		await deleteSourceEventByRowId(calendar, source, rowId, ev.id);
 		deletedCount += 1;
 	}
-}
-
-/** @deprecated Use purgeSourceEvents(auth, "rhino") */
-export async function purgeRhinoEvents(auth) {
-	return purgeSourceEvents(auth, "rhino");
 }

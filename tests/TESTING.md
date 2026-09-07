@@ -1,77 +1,48 @@
 # Testing Guide
 
-This project uses [Vitest](https://vitest.dev/) for unit testing.
+This project uses [Vitest](https://vitest.dev/) for unit testing. Tests sit next to the code they cover (`*.test.js`).
 
 ## Running Tests
 
 ```bash
-# Run tests in watch mode (re-runs on file changes)
+# Watch mode (re-runs on file changes)
 npm test
 
-# Run tests once and exit
+# Run once and exit
 npm run test:run
+
+# Live smoke test against the deployed Cloud Function (optional email on failure)
+npm run test:integration
 ```
 
-## Test Structure
+`npm test` / `npm run test:run` exclude `tests/integration.test.js` so a local unit run does not trigger a production scrape.
 
-Tests are located alongside the code they test:
-- `get-schedule/utils.test.js` - Tests for utility functions
+## What's covered
 
-## What's Tested
+Unit tests cover:
 
-### Time Formatting (`formatTimeForTitle`)
-- ✅ Morning times (8am, 9am, etc.)
-- ✅ Afternoon/evening times (1pm, 7pm, etc.)
-- ✅ Noon (12pm) and midnight (12am)
-- ✅ Times with minutes (8:30am, 2:15pm, etc.)
+- Date/time formatting, row ids, cancellation, and Google event mapping (`get-schedule/utils.test.js`)
+- Calendar sync/purge (`get-schedule/google-calendar/add-event.test.js`)
+- Rhino table detection and Crew One parsing/reminders
+- IATSE ingest, Gemini extraction, validation, thread parsing, and enrichment
+- HTTP routing (`request-router.test.js`) and runtime detection
 
-### Status Normalization (`normalizeStatus`)
-- ✅ "called" → "tentative"
-- ✅ "cancelled"/"canceled" → "cancelled"
-- ✅ "tentative" → "tentative"
-- ✅ Other statuses → "confirmed"
-- ✅ Null/undefined → "confirmed"
-
-### Event Cancellation Detection (`isEventCancelled`)
-- ✅ Events with `isCallCancelled` flag
-- ✅ Events with "CANCELLED" in show name (case-insensitive)
-- ✅ Valid events (not cancelled)
-
-### Event Transformation (`toGoogleEvent`)
-- ✅ Basic event transformation
-- ✅ Start time calculation (30 minutes before call time)
-- ✅ End time calculation (5 hours after call time)
-- ✅ "Called" status handling (UNCONFIRMED prefix, no time in title)
-- ✅ Date rollover for early morning times
-- ✅ Location and description formatting
-
-### Date/Time Utilities
-- ✅ Date formatting for Google Calendar API
-- ✅ Number padding utilities
+Integration tests (`tests/integration.test.js`) POST once to the deployed function and check CORS preflight. They are not part of the default unit suite.
 
 ## Adding New Tests
 
-1. Create a test file next to the code: `filename.test.js`
-2. Import the functions you want to test
-3. Use Vitest's `describe` and `it` blocks
-4. Run `npm test` to verify
+1. Create `filename.test.js` next to the module.
+2. Import the functions you want to test.
+3. Use Vitest `describe` / `it` / `expect`.
+4. Run `npm test`.
 
-Example:
 ```javascript
-import { describe, it, expect } from 'vitest';
-import { myFunction } from './my-module.js';
+import { describe, it, expect } from "vitest";
+import { myFunction } from "./my-module.js";
 
-describe('myFunction', () => {
-  it('should do something', () => {
+describe("myFunction", () => {
+  it("should do something", () => {
     expect(myFunction(input)).toBe(expectedOutput);
   });
 });
 ```
-
-## Continuous Integration
-
-These tests can be run in CI/CD pipelines:
-```bash
-npm run test:run
-```
-

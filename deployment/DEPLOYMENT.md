@@ -178,14 +178,12 @@ gcloud functions deploy sync-schedule \
   --trigger=http \
   --allow-unauthenticated \
   --memory=1GB \
-  --timeout=540s \
+  --timeout=600s \
   --max-instances=1 \
   --set-env-vars="RHINO_EMAIL=your-email@example.com,RHINO_PASSWORD=your-password"
 ```
 
-**Note**: For Puppeteer to work in Cloud Functions, you may need to:
-- Use `@sparticuz/chromium` instead of regular puppeteer, or
-- Configure puppeteer to use the bundled Chromium
+Puppeteer in Cloud Functions uses `@sparticuz/chromium` (see `get-schedule/puppeteer.js`). Deploy with at least 1GB memory; multi-source syncs use a 600s timeout.
 
 ## Step 6: Set Up Cloud Scheduler
 
@@ -223,19 +221,19 @@ This creates a job that runs at midnight (00:00) daily in your specified timezon
 ### Function Timeout
 If the function times out, increase the timeout:
 ```bash
-gcloud functions update sync-schedule --gen2 --region=us-central1 --timeout=540s
+gcloud functions update sync-schedule --gen2 --region=us-central1 --timeout=600s
 ```
 
 ### Puppeteer Issues
-If Puppeteer fails in Cloud Functions, consider:
-1. Using `@sparticuz/chromium` package
-2. Setting `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true` and using bundled Chromium
-3. Increasing memory allocation
+If Puppeteer fails in Cloud Functions:
+1. Confirm `@sparticuz/chromium` is in dependencies (already used in production)
+2. Increase memory (1GB minimum; 2GB if scrapes are heavy)
+3. Check function logs for Chromium executable-path errors
 
 ### Authentication Errors
-- Ensure `token.json` is properly uploaded to Secret Manager
-- Verify OAuth credentials are correctly set as secrets
-- Check that the refresh token hasn't expired
+- Re-authorize locally with `node scripts/authorize-calendar.js` (or `node sync.js`)
+- Copy `get-schedule/google-calendar/token.json` into `GOOGLE_TOKEN` and redeploy (`deployment/update-env-vars.sh` or `.ps1`)
+- Confirm `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` match `credentials.json`
 
 ### View Logs
 ```bash

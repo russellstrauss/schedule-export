@@ -5,11 +5,10 @@ import { addEvent, purgeCrewOneDeadlineReminderEvents, purgeOrphanedSourceEvents
 import { withAuthRetry } from "./auth-handler.js";
 import { trySyncIatse927FromStore } from "./ingest-iatse927.js";
 import { isFirestoreCredentialsError } from "./iatse927-firestore-auth.js";
-import { getPuppeteer, getPortalBrowserLaunchOptions, configurePortalPage, gotoPortalPage } from "./puppeteer.js";
+import { getPuppeteer, getPortalBrowserLaunchOptions, configurePortalPage } from "./puppeteer.js";
 import { getEnabledSourceIds, getSource } from "./sources/index.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
-import { buildCrewOneDeadlineReminderEvent } from "./sources/crewOne.js";
 
 dotenv.config();
 
@@ -22,7 +21,7 @@ function filterAndMapEvents(entries, sourceId) {
 }
 
 /**
- * @param {ReturnType<typeof buildCrewOneDeadlineReminderEvent>} event
+ * @param {{ summary?: string; start?: string }} event
  * @param {string} sourceId
  */
 export function formatDeadlineReminderLogLine(event, sourceId) {
@@ -51,7 +50,7 @@ function getRunnablePortalSourceIds(enabledIds) {
  * @param {string[]} portalSourceIds
  */
 async function syncPortalSources(browser, portalSourceIds) {
-  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; reminderEvents: Array<ReturnType<typeof buildCrewOneDeadlineReminderEvent>>; activeRowIds: string[]; cancelledRowIds: string[] }>} */
+  /** @type {Map<string, { googleEvents: ReturnType<typeof filterAndMapEvents>; reminderEvents: Array<{ rowId: string; summary?: string; start?: string }>; pendingOfferShows: string[]; activeRowIds: string[]; cancelledRowIds: string[] }>} */
   const syncPlanBySource = new Map();
 
   for (const sourceId of portalSourceIds) {
@@ -66,22 +65,9 @@ async function syncPortalSources(browser, portalSourceIds) {
       const activeRowIds = validEntries.map((entry) => scheduleRowId(entry));
       const cancelledRowIds = cancelledEntries.map((entry) => scheduleRowId(entry));
       const reminderEvents =
-        sourceId === "crewOne"
-          ? [
-              ...new Map(
-                entries
-                  .map((entry) => buildCrewOneDeadlineReminderEvent(entry))
-                  .filter(Boolean)
-                  .map((event) => [event.rowId, event])
-              ).values()
-            ]
-          : [];
+        typeof source.buildReminderEvents === "function" ? source.buildReminderEvents(entries) : [];
       const pendingOfferShows =
-        sourceId === "crewOne"
-          ? entries
-              .filter((entry) => String(entry.offerState || "").toLowerCase() === "pending")
-              .map((entry) => entry.show)
-          : [];
+        typeof source.pendingOfferShows === "function" ? source.pendingOfferShows(entries) : [];
 
       syncPlanBySource.set(sourceId, {
         googleEvents: filterAndMapEvents(entries, sourceId),
@@ -111,11 +97,12 @@ async function syncPortalSources(browser, portalSourceIds) {
   let auth = await authorize();
 
   for (const [sourceId, { googleEvents, reminderEvents, pendingOfferShows, activeRowIds, cancelledRowIds }] of syncPlanBySource) {
+    const source = getSource(sourceId);
     // CrewOne's dashboard is a complete snapshot of all upcoming calls, so a call
     // that's no longer listed has been taken off the schedule and should be removed.
-    const removeAbsent = sourceId === "crewOne";
+    const removeAbsent = source.removeAbsent === true;
     auth = await withAuthRetry(auth, async (a) => {
-      if (sourceId === "crewOne") {
+      if (typeof source.buildReminderEvents === "function") {
         await purgeCrewOneDeadlineReminderEvents(
           a,
           reminderEvents.map((event) => event.rowId),

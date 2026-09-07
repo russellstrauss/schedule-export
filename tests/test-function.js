@@ -1,23 +1,21 @@
-import { sendEmail, formatTestFailureEmail } from './email-service.js';
-import fetch from 'node-fetch';
+import { sendEmail, formatTestFailureEmail } from "./email-service.js";
 
-const FUNCTION_URL = process.env.FUNCTION_URL || 'https://sync-schedule-v2ndhgjy3q-uc.a.run.app';
+const FUNCTION_URL = process.env.FUNCTION_URL || "https://sync-schedule-v2ndhgjy3q-uc.a.run.app";
 const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL;
 const TEST_TIMEOUT = 600000; // 10 minutes
+const MAX_DURATION_MS = 300000; // 5 minutes
 
 /**
- * Cloud Function entry point for running integration tests
- * Can be triggered by HTTP request or Cloud Scheduler
+ * Cloud Function entry point for running a single live sync smoke test.
+ * Triggered by HTTP request or Cloud Scheduler.
  */
 export async function runTests(req, res) {
-  // Set CORS headers
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
 
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    res.status(204).send('');
+  if (req.method === "OPTIONS") {
+    res.status(204).send("");
     return;
   }
 
@@ -32,149 +30,75 @@ export async function runTests(req, res) {
 
   try {
     if (!NOTIFICATION_EMAIL) {
-      throw new Error('NOTIFICATION_EMAIL environment variable is required');
+      throw new Error("NOTIFICATION_EMAIL environment variable is required");
     }
-    
-    console.log('🧪 Starting integration tests...');
+
+    console.log("🧪 Starting integration tests...");
     console.log(`📍 Function URL: ${FUNCTION_URL}`);
     console.log(`📧 Notification email: ${NOTIFICATION_EMAIL}`);
 
     const startTime = Date.now();
-
-    // Test 1: Function responds successfully
     results.total++;
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT);
-      
+      const testStart = Date.now();
+
       const response = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         signal: controller.signal
       });
-
       clearTimeout(timeoutId);
 
+      const duration = Date.now() - testStart;
       if (!response.ok) {
         const text = await response.text();
         throw new Error(`HTTP ${response.status}: ${text.substring(0, 200)}`);
       }
 
       const data = await response.json();
-      
       if (!data.success) {
         throw new Error(`Function returned success: false - ${data.error || data.message}`);
       }
-
-      if (!data.timestamp) {
-        throw new Error('Response missing timestamp field');
+      if (typeof data.message !== "string" || typeof data.timestamp !== "string") {
+        throw new Error("Response missing or invalid message/timestamp fields");
       }
-
-      results.passed++;
-      console.log('✅ Test 1 passed: Function responds successfully');
-    } catch (error) {
-      results.failed++;
-      results.failures.push({
-        name: 'Function responds successfully',
-        error: error.message || String(error)
-      });
-      console.error('❌ Test 1 failed:', error.message);
-    }
-
-    // Test 2: Function returns proper JSON structure
-    results.total++;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT);
-      
-      const response = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (typeof data.success !== 'boolean') {
-        throw new Error('Response missing or invalid success field');
-      }
-      if (typeof data.message !== 'string') {
-        throw new Error('Response missing or invalid message field');
-      }
-      if (typeof data.timestamp !== 'string') {
-        throw new Error('Response missing or invalid timestamp field');
-      }
-
-      results.passed++;
-      console.log('✅ Test 2 passed: Function returns proper JSON structure');
-    } catch (error) {
-      results.failed++;
-      results.failures.push({
-        name: 'Function returns proper JSON structure',
-        error: error.message || String(error)
-      });
-      console.error('❌ Test 2 failed:', error.message);
-    }
-
-    // Test 3: Function completes within reasonable time
-    results.total++;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT);
-      const testStart = Date.now();
-      
-      const response = await fetch(FUNCTION_URL, {
-        method: 'POST',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      const duration = Date.now() - testStart;
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      if (duration > 300000) { // 5 minutes
+      if (duration > MAX_DURATION_MS) {
         throw new Error(`Function took too long: ${Math.round(duration / 1000)}s`);
       }
 
       results.passed++;
-      console.log(`✅ Test 3 passed: Function completed in ${Math.round(duration / 1000)}s`);
+      console.log(`✅ Live sync smoke test passed in ${Math.round(duration / 1000)}s`);
     } catch (error) {
       results.failed++;
       results.failures.push({
-        name: 'Function completes within reasonable time',
+        name: "Live sync smoke test",
         error: error.message || String(error)
       });
-      console.error('❌ Test 3 failed:', error.message);
+      console.error("❌ Live sync smoke test failed:", error.message);
     }
 
     results.duration = Date.now() - startTime;
     console.log(`📊 Test Results: ${results.passed} passed, ${results.failed} failed out of ${results.total} total`);
 
-    // Send email if tests failed
     if (results.failed > 0) {
-      console.log('❌ Tests failed! Sending notification email...');
-      
+      console.log("❌ Tests failed! Sending notification email...");
       try {
         const emailContent = formatTestFailureEmail(results);
         await sendEmail({
           to: NOTIFICATION_EMAIL,
           ...emailContent
         });
-        console.log('✅ Notification email sent successfully');
+        console.log("✅ Notification email sent successfully");
       } catch (emailError) {
-        console.error('⚠️  Failed to send notification email:', emailError.message);
+        console.error("⚠️  Failed to send notification email:", emailError.message);
       }
-      
+
       res.status(500).json({
         success: false,
-        message: 'Tests failed',
+        message: "Tests failed",
         results: {
           total: results.total,
           passed: results.passed,
@@ -184,10 +108,10 @@ export async function runTests(req, res) {
         timestamp: new Date().toISOString()
       });
     } else {
-      console.log('✅ All tests passed!');
+      console.log("✅ All tests passed!");
       res.status(200).json({
         success: true,
-        message: 'All tests passed',
+        message: "All tests passed",
         results: {
           total: results.total,
           passed: results.passed,
@@ -197,9 +121,8 @@ export async function runTests(req, res) {
       });
     }
   } catch (error) {
-    console.error('❌ Error running tests:', error);
-    
-    // Try to send email about test execution error
+    console.error("❌ Error running tests:", error);
+
     const hasEmailConfig = process.env.SMTP_USER || process.env.GMAIL_USER;
     if (hasEmailConfig) {
       try {
@@ -215,10 +138,10 @@ export async function runTests(req, res) {
           `
         });
       } catch (emailError) {
-        console.error('Failed to send error notification:', emailError.message);
+        console.error("Failed to send error notification:", emailError.message);
       }
     }
-    
+
     res.status(500).json({
       success: false,
       error: error.message,
@@ -226,5 +149,3 @@ export async function runTests(req, res) {
     });
   }
 }
-
-

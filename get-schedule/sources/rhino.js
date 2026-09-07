@@ -5,6 +5,13 @@ export const sourceId = "rhino";
 
 const LOGIN_URL = "https://thinkrhino.com/employee/georgia/Index.aspx?cookieCheck=true";
 
+export const RHINO_SCHEDULE_TABLE_SELECTORS = [
+  "table#dgResults",
+  'table[id*="dgResults"]',
+  'table[id*="Grid"]',
+  "table"
+];
+
 /**
  * Resolve the schedule table from the portal markup.
  * Rhino sometimes renders the grid under a different id or with a nested table.
@@ -14,14 +21,7 @@ const LOGIN_URL = "https://thinkrhino.com/employee/georgia/Index.aspx?cookieChec
 export function findRhinoScheduleTable(documentLike) {
   if (!documentLike || typeof documentLike.querySelector !== "function") return null;
 
-  const candidates = [
-    'table#dgResults',
-    'table[id*="dgResults"]',
-    'table[id*="Grid"]',
-    'table'
-  ];
-
-  for (const selector of candidates) {
+  for (const selector of RHINO_SCHEDULE_TABLE_SELECTORS) {
     const element = documentLike.querySelector(selector);
     if (element) return element;
   }
@@ -66,19 +66,14 @@ export async function fetchSchedule(page) {
       page.click("#btnSchedule")
     ]);
 
-    await page.waitForFunction(() => {
-      const table = document.querySelector("table#dgResults")
-        || document.querySelector('table[id*="dgResults"]')
-        || document.querySelector('table[id*="Grid"]')
-        || document.querySelector("table");
+    await page.waitForFunction((selectors) => {
+      const table = selectors.reduce((found, sel) => found || document.querySelector(sel), null);
       return !!table && table.querySelectorAll("tbody tr, thead tr, tr").length > 0;
-    }, { timeout: 90000 });
+    }, { timeout: 90000 }, RHINO_SCHEDULE_TABLE_SELECTORS);
 
-    const rows = await page.evaluate(({ callCancelledLabel, callFilledLabel }) => {
-      const table = document.querySelector("table#dgResults")
-        || document.querySelector('table[id*="dgResults"]')
-        || document.querySelector('table[id*="Grid"]')
-        || document.querySelector("table");
+    const rows = await page.evaluate((params) => {
+      const { callCancelledLabel, callFilledLabel, tableSelectors } = params;
+      const table = tableSelectors.reduce((found, sel) => found || document.querySelector(sel), null);
       if (!table) return [];
 
       const normalizeCellText = (text) =>
@@ -179,7 +174,8 @@ export async function fetchSchedule(page) {
       }).filter(Boolean);
     }, {
       callCancelledLabel: CALL_CANCELLED_LABEL.toLowerCase(),
-      callFilledLabel: "call filled"
+      callFilledLabel: "call filled",
+      tableSelectors: RHINO_SCHEDULE_TABLE_SELECTORS
     });
 
     return rows.map((row) => ({ ...row, source: sourceId }));
