@@ -42,6 +42,18 @@ export const formatTimeForTitle = (timeStr) => {
 	}
 };
 
+/**
+ * Get the display name for a source
+ * @param {string} source
+ * @returns {string}
+ */
+function getSourceDisplayName(source) {
+  if (source === "crewOne") return "Crew 1";
+  if (source === "rhino") return "Rhino";
+  if (source === "iatse927") return "IATSE";
+  return "";
+}
+
 /** @param {import("./sources/types.js").ScheduleEntry} entry */
 function iatse927EventTitle(entry) {
   const show = entry.show?.trim();
@@ -489,14 +501,17 @@ export const toGoogleEvent = (entry, options = {}) => {
     source === "crewOne" && String(entry.offerState || "").toLowerCase() === "pending";
 
   let summary;
+  const sourceDisplayName = getSourceDisplayName(source);
+  const addSourceSuffix = (title) => sourceDisplayName ? `${title} (${sourceDisplayName})` : title;
+  
   if (source === "rhino") {
     const isCalled = entry.status?.toLowerCase() === "called";
     const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
-    summary = isCalled ? showTitle : `${formattedTime} ${showTitle}`;
+    summary = isCalled ? addSourceSuffix(showTitle) : addSourceSuffix(`${formattedTime} ${showTitle}`);
   } else if (isCrewOneUnconfirmed) {
-    summary = `UNCONFIRMED => ${formattedTime} ${entry.show}`;
+    summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${entry.show}`);
   } else {
-    summary = `${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`;
+    summary = addSourceSuffix(`${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`);
   }
 
   let description;

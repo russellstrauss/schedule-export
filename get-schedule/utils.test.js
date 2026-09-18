@@ -294,7 +294,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry);
 
-    expect(result.summary).toBe('7:30am ERYKAH BADU'); // 30 min before 8am
+    expect(result.summary).toBe('7:30am ERYKAH BADU (Rhino)'); // 30 min before 8am
     expect(result.location).toBe('COBB ENERGY PERFORMING ARTS CENTRE - ATLANTA GA');
     expect(result.status).toBe('confirmed');
     expect(result.start).toMatch(/^2025-11-23T07:30:00$/); // 30 min before call time
@@ -320,7 +320,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'crewOne' });
 
-    expect(result.summary).toBe('7:30am SECOND PORTAL GIG');
+    expect(result.summary).toBe('7:30am SECOND PORTAL GIG (Crew 1)');
     expect(result.source).toBe('crewOne');
   });
 
@@ -341,7 +341,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'crewOne' });
 
-    expect(result.summary).toBe('UNCONFIRMED => 7:30am A TEST SHOW');
+    expect(result.summary).toBe('UNCONFIRMED => 7:30am A TEST SHOW (Crew 1)');
     expect(result.status).toBe('tentative');
   });
 
@@ -362,7 +362,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'crewOne' });
 
-    expect(result.summary).toBe('7:30am A TEST SHOW');
+    expect(result.summary).toBe('7:30am A TEST SHOW (Crew 1)');
     expect(result.status).toBe('confirmed');
   });
 
@@ -402,7 +402,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'iatse927' });
 
-    expect(result.summary).toBe('9:30pm Charlie Puth');
+    expect(result.summary).toBe('9:30pm Charlie Puth (IATSE)');
   });
 
   it('should handle "called" status with UNCONFIRMED prefix', () => {
@@ -421,7 +421,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry);
 
-    expect(result.summary).toBe('UNCONFIRMED => 2025 T-MOBILE SEC CHAMPIONSHIP');
+    expect(result.summary).toBe('UNCONFIRMED => 2025 T-MOBILE SEC CHAMPIONSHIP (Rhino)');
     expect(result.status).toBe('tentative');
   });
 
@@ -798,8 +798,8 @@ describe('logAndMapEvents future-only filtering', () => {
     });
 
     expect(mapped.map((event) => event.summary)).toEqual([
-      '8:30am Lakewood Amphitheatre',
-      '8:30am State Farm Arena'
+      '8:30am Lakewood Amphitheatre (IATSE)',
+      '8:30am State Farm Arena (IATSE)'
     ]);
   });
 });
