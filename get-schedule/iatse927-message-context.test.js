@@ -51,6 +51,24 @@ describe("inferExpectedCalendarEvents", () => {
     expect(expected?.types).toEqual(["Call"]);
   });
 
+  it("expects two events for reminder with both load in and load out", () => {
+    const text = "This is your reminder for 5/29-MGK at Lakewood Amphitheatre for a 10AM load in and 10:30PM load out. Please be on time.";
+    const hints = extractSchedulingHints(text, new Date("2026-05-29"));
+    const expected = inferExpectedCalendarEvents(text, hints, []);
+    expect(expected?.count).toBe(2);
+    expect(expected?.types).toEqual(["Load In", "Load Out"]);
+    expect(expected?.callTimes24h).toEqual(["10:00", "22:30"]);
+  });
+
+  it("expects one load in event for 'load in only' reminder", () => {
+    const text = "This is your reminder for 6/5 Concert at Venue for Load In only at 10AM. Please confirm.";
+    const hints = extractSchedulingHints(text, new Date("2026-06-05"));
+    const expected = inferExpectedCalendarEvents(text, hints, []);
+    expect(expected?.count).toBe(1);
+    expect(expected?.types).toEqual(["Load In"]);
+    expect(expected?.callTimes24h).toEqual(["10:00"]);
+  });
+
   it("expects null count for availability-only asks", () => {
     const text = "Are you available 6/3 for Charlie Puth at Chastain for a 10:30AM and 10PM Load Pit";
     const hints = extractSchedulingHints(text, new Date("2026-06-01"));

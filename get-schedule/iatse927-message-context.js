@@ -159,6 +159,23 @@ export function inferExpectedCalendarEvents(text, hints, precedingContext = []) 
     const reminderTimeMatches = [...text.matchAll(TIME_TOKEN_RE)].map((m) => m[1]);
     const parsed = reminderTimeMatches.map(parseIatseTimeToken).filter(Boolean);
 
+    if (parsed.length >= 2 && hints.mentionsLoadIn && hints.mentionsLoadOut) {
+      const sorted = [...parsed].sort();
+      return {
+        count: 2,
+        types: ["Load In", "Load Out"],
+        callTimes24h: [sorted[0], sorted[sorted.length - 1]],
+        note: "Reminder mentions both load in and load out with two times → two crew calls."
+      };
+    }
+    if (parsed.length === 1 && hints.mentionsLoadInOnly) {
+      return {
+        count: 1,
+        types: ["Load In"],
+        callTimes24h: parsed,
+        note: "Reminder text for load in only → one Load In event."
+      };
+    }
     if (parsed.length >= 1) {
       return {
         count: 1,
