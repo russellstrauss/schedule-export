@@ -905,8 +905,9 @@ export async function fetchSchedule(page) {
       );
     }
 
-    /** @param {{ date: string, callTime: string, venue?: string, position?: string }} whenParts */
+    /** @param {{ date: string, callTime: string, venue?: string, position?: string, call?: { job?: string, contractorNotes?: string } }} whenParts */
     const pushEntry = (whenParts) => {
+      const eventDetails = formatCrewOneEventDescription(detail, whenParts.call);
       entries.push({
         source: sourceId,
         date: whenParts.date,
@@ -917,7 +918,7 @@ export async function fetchSchedule(page) {
         client: "",
         type: "",
         position: whenParts.position || rowObj.position || "",
-        details: "",
+        details: eventDetails,
         status: "confirmed",
         notes: "",
         isCallCancelled: false,
@@ -927,11 +928,15 @@ export async function fetchSchedule(page) {
     };
 
     if (rowObj.when) {
+      const matchingCall = detail?.calls?.find((call) =>
+        matchDetailCall(rowObj.when.date, rowObj.when.callTime, call)
+      );
       pushEntry({
         date: rowObj.when.date,
         callTime: rowObj.when.callTime,
         venue: rowObj.where || detail?.venue || "",
-        position: rowObj.position || ""
+        position: rowObj.position || "",
+        call: matchingCall
       });
       continue;
     }
@@ -947,7 +952,8 @@ export async function fetchSchedule(page) {
           date: when.date,
           callTime: when.callTime,
           venue: detail?.venue || rowObj.where || "",
-          position: call.job || rowObj.position || ""
+          position: call.job || rowObj.position || "",
+          call: call
         });
         expanded += 1;
       }

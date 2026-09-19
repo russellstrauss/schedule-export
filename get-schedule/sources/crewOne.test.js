@@ -185,7 +185,7 @@ describe("crewOne", () => {
             event: "A TEST SHOW",
             where: "The Venue",
             position: "",
-            dateTime: "Fri Sep 11 8:00 AM",
+            dateTime: "Fri Sep 25 8:00 AM",
             detailUrl: "https://portal.crew1.com/view_upcoming/123"
           }]);
         }
@@ -199,7 +199,7 @@ describe("crewOne", () => {
             calls: [],
             generalNotes: "",
             venueNotes: "",
-            offerDeadlineText: "This offer closes September 11, 2026 at 9:11 AM",
+            offerDeadlineText: "This offer closes September 25, 2026 at 9:11 AM",
             offerState: "pending"
           });
         }
@@ -210,17 +210,17 @@ describe("crewOne", () => {
     const { fetchSchedule } = await import("./crewOne.js");
     const entries = await fetchSchedule(page);
 
-    expect(entries[0].offerDeadlineText).toBe("This offer closes September 11, 2026 at 9:11 AM");
+    expect(entries[0].offerDeadlineText).toBe("This offer closes September 25, 2026 at 9:11 AM");
     expect(entries[0].offerState).toBe("pending");
     expect(buildCrewOneDeadlineReminderEvent(entries[0])).not.toBeNull();
   });
 
   it("parses crew one offer deadlines and builds a reminder event", () => {
-    const deadlineText = "This offer closes September 11, 2026 at 9:11 AM";
+    const deadlineText = "This offer closes September 25, 2026 at 9:11 AM";
     const deadline = parseCrewOneOfferDeadline(deadlineText);
     expect(deadline).toEqual({
       month: 9,
-      day: 11,
+      day: 25,
       year: 2026,
       hours: 9,
       minutes: 11,
@@ -230,7 +230,7 @@ describe("crewOne", () => {
     const reminder = buildCrewOneDeadlineReminderEvent(
       {
         source: "crewOne",
-        date: "9/11/2026",
+        date: "9/25/2026",
         callTime: "08:00",
         show: "A TEST SHOW",
         venue: "The Venue",
@@ -243,9 +243,9 @@ describe("crewOne", () => {
       source: "crewOne",
       kind: "deadlineReminder",
       summary: "Offer deadline: A TEST SHOW",
-      start: "2026-09-11T09:11:00",
-      end: "2026-09-11T09:41:00",
-      rowId: "9/11/2026 | 09:11 | A TEST SHOW | The Venue|deadlineReminder",
+      start: "2026-09-25T09:11:00",
+      end: "2026-09-25T09:41:00",
+      rowId: "9/25/2026 | 09:11 | A TEST SHOW | The Venue|deadlineReminder",
       description: expect.stringContaining(deadlineText)
     });
   });
@@ -256,11 +256,11 @@ describe("crewOne", () => {
 
     const reminder = buildCrewOneDeadlineReminderEvent({
       source: "crewOne",
-      date: "9/11/2026",
+      date: "9/25/2026",
       callTime: "08:00",
       show: "A TEST SHOW",
       venue: "The Venue",
-      offerDeadlineText: "This offer closes September 11, 2026 at 9:11 AM",
+      offerDeadlineText: "This offer closes September 25, 2026 at 9:11 AM",
       offerState: state
     });
 
@@ -296,7 +296,7 @@ describe("crewOne", () => {
       `crewone-offer-deadlines-test-${Date.now()}.json`
     );
     process.env.CREWONE_OFFER_DEADLINE_CACHE = cachePath;
-    rememberOfferDeadline(detailUrl, "This offer closes September 12, 2026 at 9:00 AM");
+    rememberOfferDeadline(detailUrl, "This offer closes September 25, 2026 at 9:00 AM");
 
     const page = {
       async goto() {},
@@ -331,8 +331,8 @@ describe("crewOne", () => {
             eventTypeLine: "",
             venue: "STATE FARM ARENA",
             calls: [
-              { job: "", startDateTime: "Sun Sep 20, 2026 8:00 AM", contractorNotes: "" },
-              { job: "", startDateTime: "Sun Sep 20, 2026 8:30 PM", contractorNotes: "" }
+              { job: "", startDateTime: "Sun Sep 28, 2026 8:00 AM", contractorNotes: "" },
+              { job: "", startDateTime: "Sun Sep 28, 2026 8:30 PM", contractorNotes: "" }
             ],
             generalNotes: "",
             venueNotes: "",
@@ -353,10 +353,10 @@ describe("crewOne", () => {
         show: "CHAYANNE 2026",
         venue: "STATE FARM ARENA",
         position: "STAGEHAND",
-        date: "9/20/2026",
+        date: "9/28/2026",
         callTime: "08:00",
         offerState: "pending",
-        offerDeadlineText: "This offer closes September 12, 2026 at 9:00 AM"
+        offerDeadlineText: "This offer closes September 25, 2026 at 9:00 AM"
       });
       expect(entries[1]).toMatchObject({
         show: "CHAYANNE 2026",
@@ -366,8 +366,8 @@ describe("crewOne", () => {
       const reminder = buildCrewOneDeadlineReminderEvent(entries[0]);
       expect(reminder).toMatchObject({
         summary: "Offer deadline: CHAYANNE 2026",
-        start: "2026-09-12T09:00:00",
-        rowId: "9/12/2026 | 09:00 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder"
+        start: "2026-09-25T09:00:00",
+        rowId: "9/25/2026 | 09:00 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder"
       });
     } finally {
       delete process.env.CREWONE_OFFER_DEADLINE_CACHE;
