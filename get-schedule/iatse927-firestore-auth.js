@@ -143,8 +143,12 @@ export async function getGcloudAccessToken() {
       if (res.ok) {
         const data = await res.json();
         if (data.access_token) {
+          console.log("✅ Retrieved access token from metadata server");
           return data.access_token;
         }
+      } else {
+        const errorText = await res.text();
+        console.warn(`Metadata server token request failed (${res.status}):`, errorText);
       }
     } catch (err) {
       console.warn("Failed to get access token from metadata server:", err);

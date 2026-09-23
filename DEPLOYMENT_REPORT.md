@@ -68,11 +68,9 @@ During testing, the following portal sources encountered issues:
 
 **Recommendation:** Monitor the Cloud Function logs after the next scheduled run to verify portal scraping success.
 
-### 2. Firestore Permission Issue
+### 2. Firestore Permission Issue - UPDATE 2026-09-23
 
-The IATSE 927 sync encountered a "CONSUMER_INVALID" error when accessing Firestore. This error typically resolves after:
-- API propagation (can take 5-10 minutes after enabling)
-- Service account permissions fully propagating
+The IATSE 927 sync encountered a "CONSUMER_INVALID" error when accessing Firestore via REST API from Cloud Functions.
 
 **Current Service Account:** `238397559206-compute@developer.gserviceaccount.com`
 
@@ -80,7 +78,17 @@ The IATSE 927 sync encountered a "CONSUMER_INVALID" error when accessing Firesto
 - ✅ `roles/editor`
 - ✅ `roles/datastore.user`
 
-**Status:** The service account has the correct permissions. If the issue persists, it may be a transient API propagation delay.
+**Status:** The Firestore API is enabled and accessible via gcloud CLI with the same service account, but Cloud Functions receive CONSUMER_INVALID errors when using the metadata server token. This may be related to:
+- Gen2 Cloud Functions networking restrictions  
+- Firestore Native mode configuration with App Engine integration disabled
+- Service account token scopes from metadata server
+
+**Workaround:** The function now gracefully handles this by falling back and skipping IATSE sync. The sync completes successfully for other sources.
+
+**Fix Deployed (2026-09-23 01:36 UTC):**
+- Added REST API fallback for Firestore operations
+- Updated error detection to catch CONSUMER_INVALID and PERMISSION_DENIED errors
+- Function now completes successfully even when Firestore is unavailable
 
 ### 3. IAM Policy Update Warning
 
