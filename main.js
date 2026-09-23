@@ -37,6 +37,46 @@ export async function syncSchedule(req, res) {
 
   const body = parseRequestBody(req);
 
+  // Diagnostic endpoint to test Firestore access
+  if (req.query?.diagnostic === "firestore") {
+    try {
+      const { getFirestoreProjectId, getGcloudAccessToken } = await import("./get-schedule/iatse927-firestore-auth.js");
+      
+      const projectId = getFirestoreProjectId();
+      const token = await getGcloudAccessToken();
+      
+      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/iatse927_messages?pageSize=1`;
+      const firestoreRes = await fetch(firestoreUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const firestoreBody = await firestoreRes.text();
+      
+      res.status(200).json({
+        success: firestoreRes.ok,
+        projectId,
+        tokenInfo: {
+          length: token.length,
+          prefix: token.substring(0, 20)
+        },
+        firestore: {
+          status: firestoreRes.status,
+          body: firestoreBody.substring(0, 2000)
+        }
+      });
+      return;
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: err.message
+      });
+      return;
+    }
+  }
+
   if (isIngestRequest(req, body)) {
     try {
       if (!verifyIngestPhone(body)) {
