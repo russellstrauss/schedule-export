@@ -123,9 +123,25 @@ export function getFirestoreProjectId() {
 }
 
 /**
- * @returns {string}
+ * @returns {Promise<string>}
  */
-export function getGcloudAccessToken() {
+export async function getGcloudAccessToken() {
+  if (isCloudRuntime()) {
+    try {
+      const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", {
+        headers: { "Metadata-Flavor": "Google" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.access_token) {
+          return data.access_token;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to get access token from metadata server:", err);
+    }
+  }
+
   try {
     return execSync("gcloud auth print-access-token", {
       encoding: "utf8",
