@@ -40,15 +40,25 @@ export async function syncSchedule(req, res) {
   // Diagnostic endpoint to test Firestore access
   if (req.query?.diagnostic === "firestore") {
     try {
-      const { getFirestoreProjectId, getGcloudAccessToken } = await import("./get-schedule/iatse927-firestore-auth.js");
+      const { google } = await import("googleapis");
+      const { getFirestoreProjectId } = await import("./get-schedule/iatse927-firestore-auth.js");
       
-      const projectId = getFirestoreProjectId();
-      const token = await getGcloudAccessToken();
+      // Try Google Auth Library (proper way)
+      const auth = new google.auth.GoogleAuth({
+        scopes: [
+          'https://www.googleapis.com/auth/datastore',
+          'https://www.googleapis.com/auth/cloud-platform'
+        ]
+      });
+      
+      const client = await auth.getClient();
+      const projectId = await auth.getProjectId();
+      const token = await client.getAccessToken();
       
       const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/iatse927_messages?pageSize=1`;
       const firestoreRes = await fetch(firestoreUrl, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${token.token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -57,10 +67,11 @@ export async function syncSchedule(req, res) {
       
       res.status(200).json({
         success: firestoreRes.ok,
+        authType: client.constructor.name,
         projectId,
         tokenInfo: {
-          length: token.length,
-          prefix: token.substring(0, 20)
+          length: token.token?.length || 0,
+          prefix: token.token?.substring(0, 20) || ''
         },
         firestore: {
           status: firestoreRes.status,
@@ -71,7 +82,8 @@ export async function syncSchedule(req, res) {
     } catch (err) {
       res.status(500).json({
         success: false,
-        error: err.message
+        error: err.message,
+        stack: err.stack
       });
       return;
     }
