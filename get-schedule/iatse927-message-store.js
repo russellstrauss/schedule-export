@@ -96,6 +96,11 @@ async function loadAllMessagesViaRest() {
 export async function appendMessage(text, options = {}) {
   const messageId = options.messageId?.trim() || contentHash(text);
   
+  // Prefer REST API in all environments to avoid SDK auth issues
+  if (shouldPreferFirestoreRest()) {
+    return appendMessageViaRest(text, { messageId, receivedAt: options.receivedAt });
+  }
+  
   try {
     const coll = getDb().collection(COLLECTION);
 

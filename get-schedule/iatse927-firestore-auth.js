@@ -76,11 +76,12 @@ export function isFirestoreProjectIdError(err) {
 }
 
 /**
- * Local dev uses gcloud user credentials (REST). Cloud Functions use the Firestore SDK (ADC).
+ * Prefer REST API in all environments to avoid SDK authentication issues.
+ * REST API uses metadata server tokens in Cloud Functions and gcloud CLI locally.
  * @returns {boolean}
  */
 export function shouldPreferFirestoreRest() {
-  return !isCloudRuntime();
+  return true;
 }
 
 /** Cached after first successful resolution in cloud. */
