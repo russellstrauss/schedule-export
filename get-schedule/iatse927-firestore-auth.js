@@ -48,7 +48,16 @@ function firestoreErrorText(err) {
  */
 export function isFirestoreCredentialsError(err) {
   const message = firestoreErrorText(err);
+  const code = err?.code;
+  const reason = err?.reason || err?.statusDetails?.[0]?.reason;
+  
   return (
+    code === 7 ||
+    code === "PERMISSION_DENIED" ||
+    reason === "CONSUMER_INVALID" ||
+    message.includes("CONSUMER_INVALID") ||
+    message.includes("PERMISSION_DENIED") ||
+    message.includes("Permission denied on resource project") ||
     message.includes("Could not load the default credentials") ||
     message.includes("NO_ADC_FOUND") ||
     message.includes("default credentials") ||
@@ -67,11 +76,12 @@ export function isFirestoreProjectIdError(err) {
 }
 
 /**
- * Local dev uses gcloud user credentials (REST). Cloud Functions use the Firestore SDK (ADC).
+ * Prefer REST API in all environments to avoid SDK authentication issues.
+ * REST API uses metadata server tokens in Cloud Functions and gcloud CLI locally.
  * @returns {boolean}
  */
 export function shouldPreferFirestoreRest() {
-  return !isCloudRuntime();
+  return true;
 }
 
 /** Cached after first successful resolution in cloud. */
@@ -123,9 +133,29 @@ export function getFirestoreProjectId() {
 }
 
 /**
- * @returns {string}
+ * @returns {Promise<string>}
  */
-export function getGcloudAccessToken() {
+export async function getGcloudAccessToken() {
+  if (isCloudRuntime()) {
+    try {
+      const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", {
+        headers: { "Metadata-Flavor": "Google" }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.access_token) {
+          console.log("✅ Retrieved access token from metadata server");
+          return data.access_token;
+        }
+      } else {
+        const errorText = await res.text();
+        console.warn(`Metadata server token request failed (${res.status}):`, errorText);
+      }
+    } catch (err) {
+      console.warn("Failed to get access token from metadata server:", err);
+    }
+  }
+
   try {
     return execSync("gcloud auth print-access-token", {
       encoding: "utf8",

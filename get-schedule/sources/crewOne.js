@@ -10,7 +10,9 @@ export {
   mapCrewOneDashboardRow,
   isCrewOneOfferUnconfirmed,
   isCrewOneOfferDeclined,
-  buildCrewOneDeadlineReminderEvent
+  buildCrewOneDeadlineReminderEvent,
+  matchDetailCall,
+  formatCrewOneEventDescription
 } from "./crewOne-parse.js";
 export { fetchSchedule } from "./crewOne-scrape.js";
 

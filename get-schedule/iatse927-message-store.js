@@ -46,7 +46,7 @@ function contentHash(text) {
  */
 async function loadAllMessagesViaRest() {
   const projectId = getFirestoreProjectId();
-  const token = getGcloudAccessToken();
+  const token = await getGcloudAccessToken();
   /** @type {{ text: string; receivedAt: Date | null; messageId: string }[]} */
   const messages = [];
   let pageToken;
@@ -95,32 +95,141 @@ async function loadAllMessagesViaRest() {
  */
 export async function appendMessage(text, options = {}) {
   const messageId = options.messageId?.trim() || contentHash(text);
-  const coll = getDb().collection(COLLECTION);
-
-  if (options.messageId) {
-    const existing = await coll.where("messageId", "==", messageId).limit(1).get();
-    if (!existing.empty) {
-      return { appended: false, id: existing.docs[0].id };
-    }
-  } else {
-    const byHash = await coll.where("contentHash", "==", contentHash(text)).limit(1).get();
-    if (!byHash.empty) {
-      return { appended: false, id: byHash.docs[0].id };
-    }
+  
+  // Prefer REST API in all environments to avoid SDK auth issues
+  if (shouldPreferFirestoreRest()) {
+    return appendMessageViaRest(text, { messageId, receivedAt: options.receivedAt });
   }
+  
+  try {
+    const coll = getDb().collection(COLLECTION);
 
-  /** @type {Record<string, unknown>} */
-  const doc = {
-    text,
-    messageId,
-    contentHash: contentHash(text),
-    receivedAt: options.receivedAt
-      ? Firestore.Timestamp.fromDate(options.receivedAt)
-      : Firestore.FieldValue.serverTimestamp()
+    if (options.messageId) {
+      const existing = await coll.where("messageId", "==", messageId).limit(1).get();
+      if (!existing.empty) {
+        return { appended: false, id: existing.docs[0].id };
+      }
+    } else {
+      const byHash = await coll.where("contentHash", "==", contentHash(text)).limit(1).get();
+      if (!byHash.empty) {
+        return { appended: false, id: byHash.docs[0].id };
+      }
+    }
+
+    /** @type {Record<string, unknown>} */
+    const doc = {
+      text,
+      messageId,
+      contentHash: contentHash(text),
+      receivedAt: options.receivedAt
+        ? Firestore.Timestamp.fromDate(options.receivedAt)
+        : Firestore.FieldValue.serverTimestamp()
+    };
+
+    const docRef = await coll.add(doc);
+    return { appended: true, id: docRef.id };
+  } catch (err) {
+    if (!isFirestoreCredentialsError(err)) {
+      throw err;
+    }
+    
+    useRestClient = true;
+    db = null;
+    console.warn("⚠️  [iatse927] Firestore SDK auth unavailable for append; using REST fallback");
+    return appendMessageViaRest(text, { messageId, receivedAt: options.receivedAt });
+  }
+}
+
+/**
+ * @param {string} text
+ * @param {{ messageId: string; receivedAt?: Date }} options
+ * @returns {Promise<{ appended: boolean; id: string }>}
+ */
+async function appendMessageViaRest(text, options) {
+  const projectId = getFirestoreProjectId();
+  const token = await getGcloudAccessToken();
+  const { messageId, receivedAt } = options;
+  const hash = contentHash(text);
+
+  const queryUrl = new URL(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`
+  );
+
+  const checkQuery = {
+    structuredQuery: {
+      from: [{ collectionId: COLLECTION }],
+      where: {
+        compositeFilter: {
+          op: "OR",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "messageId" },
+                op: "EQUAL",
+                value: { stringValue: messageId }
+              }
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "contentHash" },
+                op: "EQUAL",
+                value: { stringValue: hash }
+              }
+            }
+          ]
+        }
+      },
+      limit: 1
+    }
   };
 
-  const docRef = await coll.add(doc);
-  return { appended: true, id: docRef.id };
+  const queryRes = await fetch(queryUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(checkQuery)
+  });
+
+  if (!queryRes.ok) {
+    const body = await queryRes.text();
+    throw new Error(`Firestore REST query failed (${queryRes.status}): ${body}`);
+  }
+
+  const queryData = await queryRes.json();
+  if (queryData[0]?.document) {
+    const docId = queryData[0].document.name.split("/").pop();
+    return { appended: false, id: docId };
+  }
+
+  const docId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const createUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${COLLECTION}?documentId=${docId}`;
+  
+  const fields = {
+    text: { stringValue: text },
+    messageId: { stringValue: messageId },
+    contentHash: { stringValue: hash },
+    receivedAt: receivedAt
+      ? { timestampValue: receivedAt.toISOString() }
+      : { timestampValue: new Date().toISOString() }
+  };
+
+  const createRes = await fetch(createUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ fields })
+  });
+
+  if (!createRes.ok) {
+    const body = await createRes.text();
+    throw new Error(`Firestore REST create failed (${createRes.status}): ${body}`);
+  }
+
+  return { appended: true, id: docId };
 }
 
 /**

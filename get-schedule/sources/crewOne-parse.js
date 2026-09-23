@@ -175,6 +175,30 @@ export function mapCrewOneDashboardRow(cellTexts, headerTexts = [], detailUrl = 
   };
 }
 
+export function matchDetailCall(date, callTime, call) {
+  if (!call?.startDateTime) return false;
+  const when = parseCrew1DateTime(call.startDateTime);
+  return Boolean(when && when.date === date && when.callTime === callTime);
+}
+
+/**
+ * @param {{
+ *   eventTypeLine?: string;
+ *   generalNotes?: string;
+ *   venueNotes?: string;
+ * } | null | undefined} detail
+ * @param {{ job?: string; contractorNotes?: string }} call
+ */
+export function formatCrewOneEventDescription(detail, call) {
+  const parts = [];
+  if (detail?.eventTypeLine) parts.push(detail.eventTypeLine);
+  if (call?.job) parts.push(`Position: ${call.job}`);
+  if (call?.contractorNotes) parts.push(`Call notes: ${call.contractorNotes}`);
+  if (detail?.generalNotes) parts.push(detail.generalNotes);
+  if (detail?.venueNotes) parts.push(detail.venueNotes);
+  return parts.filter(Boolean).join("\n\n");
+}
+
 export function isCrewOneOfferUnconfirmed(entry) {
   return String(entry?.offerState || "").toLowerCase() === "pending";
 }

@@ -37,6 +37,58 @@ export async function syncSchedule(req, res) {
 
   const body = parseRequestBody(req);
 
+  // Diagnostic endpoint to test Firestore access
+  if (req.query?.diagnostic === "firestore") {
+    try {
+      const { google } = await import("googleapis");
+      const { getFirestoreProjectId } = await import("./get-schedule/iatse927-firestore-auth.js");
+      
+      // Try Google Auth Library (proper way)
+      const auth = new google.auth.GoogleAuth({
+        scopes: [
+          'https://www.googleapis.com/auth/datastore',
+          'https://www.googleapis.com/auth/cloud-platform'
+        ]
+      });
+      
+      const client = await auth.getClient();
+      const projectId = await auth.getProjectId();
+      const token = await client.getAccessToken();
+      
+      const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/iatse927_messages?pageSize=1`;
+      const firestoreRes = await fetch(firestoreUrl, {
+        headers: {
+          'Authorization': `Bearer ${token.token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const firestoreBody = await firestoreRes.text();
+      
+      res.status(200).json({
+        success: firestoreRes.ok,
+        authType: client.constructor.name,
+        projectId,
+        tokenInfo: {
+          length: token.token?.length || 0,
+          prefix: token.token?.substring(0, 20) || ''
+        },
+        firestore: {
+          status: firestoreRes.status,
+          body: firestoreBody.substring(0, 2000)
+        }
+      });
+      return;
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: err.message,
+        stack: err.stack
+      });
+      return;
+    }
+  }
+
   if (isIngestRequest(req, body)) {
     try {
       if (!verifyIngestPhone(body)) {
