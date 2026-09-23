@@ -48,7 +48,16 @@ function firestoreErrorText(err) {
  */
 export function isFirestoreCredentialsError(err) {
   const message = firestoreErrorText(err);
+  const code = err?.code;
+  const reason = err?.reason || err?.statusDetails?.[0]?.reason;
+  
   return (
+    code === 7 ||
+    code === "PERMISSION_DENIED" ||
+    reason === "CONSUMER_INVALID" ||
+    message.includes("CONSUMER_INVALID") ||
+    message.includes("PERMISSION_DENIED") ||
+    message.includes("Permission denied on resource project") ||
     message.includes("Could not load the default credentials") ||
     message.includes("NO_ADC_FOUND") ||
     message.includes("default credentials") ||
