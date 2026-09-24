@@ -210,10 +210,27 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
     const results = [];
 
     if (heading) {
+      const headingLevel = Number(heading.tagName.slice(1));
+      const nextSectionHeading = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].find(
+        (candidate) =>
+          candidate !== heading &&
+          Number(candidate.tagName.slice(1)) <= headingLevel &&
+          Boolean(heading.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING)
+      );
+      const belongsToSection = (element) => {
+        const followsHeading = Boolean(
+          heading.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING
+        );
+        const precedesNextHeading =
+          !nextSectionHeading ||
+          Boolean(element.compareDocumentPosition(nextSectionHeading) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return followsHeading && precedesNextHeading;
+      };
+
       let container = heading.parentElement;
       for (let i = 0; i < 10 && container; i++) {
         // Try tables first
-        const tables = [...container.querySelectorAll('table')];
+        const tables = [...container.querySelectorAll('table')].filter(belongsToSection);
         for (const t of tables) {
           const rows = extractFromTable(t);
           for (const r of rows) results.push(r);
@@ -222,7 +239,7 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
         // Try list items and card-like elements
         const candidateSelectors = ['li', '.upcoming-row', '.upcoming-item', '.event', '.card', '.list-item', '.row'];
         for (const sel of candidateSelectors) {
-          const elems = [...container.querySelectorAll(sel)];
+          const elems = [...container.querySelectorAll(sel)].filter(belongsToSection);
           for (const el of elems) {
             const text = (el.innerText || el.textContent || '').trim();
             if (!text) continue;
@@ -263,6 +280,10 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
     }
 
     if (results.length > 0) return results;
+    // A present heading defines an authoritative section boundary. If that
+    // section is empty, do not fall back to unrelated tables elsewhere on the
+    // dashboard and relabel their rows as upcoming calls.
+    if (heading) return results;
     if (!allowGlobalFallback) return results;
 
     // Fallback to scanning all tables in the document
@@ -531,24 +552,18 @@ export async function fetchSchedule(page) {
     }
 
     const detail = rowObj.detailUrl ? await fetchEventDetail(page, rowObj.detailUrl, detailCache) : null;
-    let offerState =
+    const offerState =
       rowObj.section === "offers"
         ? detail?.offerState === "declined"
           ? "declined"
           : "pending"
-        : detail?.offerState || "unknown";
+        : "accepted";
 
     let offerDeadlineText = detail?.offerDeadlineText || "";
     if (offerDeadlineText && rowObj.detailUrl) {
       rememberOfferDeadline(rowObj.detailUrl, offerDeadlineText);
     } else if (!offerDeadlineText && rowObj.detailUrl) {
       offerDeadlineText = recallOfferDeadline(rowObj.detailUrl);
-    }
-    // A response page can lose its offer controls after submission or expiry.
-    // The remembered deadline still proves this was an offer; unless the page
-    // explicitly reports acceptance or decline, keep it unconfirmed.
-    if (offerState === "unknown") {
-      offerState = offerDeadlineText ? "pending" : "accepted";
     }
     if (rowObj.section === "offers" && offerState === "pending" && !offerDeadlineText) {
       console.warn(
