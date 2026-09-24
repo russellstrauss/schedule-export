@@ -280,6 +280,10 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
     }
 
     if (results.length > 0) return results;
+    // A present heading defines an authoritative section boundary. If that
+    // section is empty, do not fall back to unrelated tables elsewhere on the
+    // dashboard and relabel their rows as upcoming calls.
+    if (heading) return results;
     if (!allowGlobalFallback) return results;
 
     // Fallback to scanning all tables in the document
