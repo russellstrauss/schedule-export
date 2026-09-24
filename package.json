@@ -26,6 +26,7 @@
                          "@sparticuz/chromium":  "^131.0.1",
                          "dotenv":  "^17.2.3",
                          "googleapis":  "^166.0.0",
+                         "jsonwebtoken":  "^9.0.2",
                          "node-fetch":  "^3.3.2",
                          "nodemailer":  "^9.0.1",
                          "open":  "^10.2.0",
