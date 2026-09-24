@@ -71,6 +71,7 @@ describe('normalizeStatus', () => {
     expect(normalizeStatus('called')).toBe('tentative');
     expect(normalizeStatus('Called')).toBe('tentative');
     expect(normalizeStatus('CALLED')).toBe('tentative');
+    expect(normalizeStatus('Unconfirmed')).toBe('tentative');
   });
 
   it('should map cancelled/canceled to "cancelled"', () => {
@@ -422,6 +423,24 @@ describe('toGoogleEvent', () => {
     const result = toGoogleEvent(entry);
 
     expect(result.summary).toBe('UNCONFIRMED => 2025 T-MOBILE SEC CHAMPIONSHIP (Rhino)');
+    expect(result.status).toBe('tentative');
+  });
+
+  it('prepends UNCONFIRMED to Rhino events explicitly marked unconfirmed', () => {
+    const result = toGoogleEvent({
+      date: '09/28/2026',
+      callTime: '08:00',
+      show: 'RHINO SHOW',
+      venue: 'Arena',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Unconfirmed',
+      details: '',
+      notes: ''
+    });
+
+    expect(result.summary).toBe('UNCONFIRMED => RHINO SHOW (Rhino)');
     expect(result.status).toBe('tentative');
   });
 

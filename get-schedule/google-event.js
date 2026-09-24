@@ -95,9 +95,13 @@ export const toGoogleEvent = (entry, options = {}) => {
   const addSourceSuffix = (title) => sourceDisplayName ? `${title} (${sourceDisplayName})` : title;
 
   if (source === "rhino") {
-    const isCalled = entry.status?.toLowerCase() === "called";
-    const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
-    summary = isCalled ? addSourceSuffix(showTitle) : addSourceSuffix(`${formattedTime} ${showTitle}`);
+    const isUnconfirmed = ["called", "unconfirmed", "tentative"].includes(
+      String(entry.status || "").trim().toLowerCase()
+    );
+    const showTitle = isUnconfirmed ? `UNCONFIRMED => ${entry.show}` : entry.show;
+    summary = isUnconfirmed
+      ? addSourceSuffix(showTitle)
+      : addSourceSuffix(`${formattedTime} ${showTitle}`);
   } else if (isCrewOneUnconfirmed) {
     summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${entry.show}`);
   } else {
