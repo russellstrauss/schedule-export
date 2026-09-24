@@ -137,59 +137,71 @@ export function getFirestoreProjectId() {
  * @returns {Promise<string | null>}
  */
 async function getServiceAccountToken() {
-  const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
-  if (!keyPath) return null;
+  const rawPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim().replace(/^['"]|['"]$/g, "");
+  if (!rawPath) return null;
 
+  const fs = await import("fs");
+  const os = await import("os");
+  const crypto = await import("crypto");
+  const keyPath = rawPath.replace(/^~(?=$|\/)/, os.homedir());
+
+  // Once a key file is configured, report its failure instead of silently falling
+  // through to gcloud (which is usually absent where a key file is used, e.g. Termux).
+  const fail = (reason) => new Error(`Firestore auth failed via GOOGLE_APPLICATION_CREDENTIALS (${keyPath}): ${reason}`);
+
+  if (!fs.existsSync(keyPath)) {
+    throw fail("file not found");
+  }
+
+  let keyData;
   try {
-    const fs = await import("fs");
-    const keyData = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    keyData = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+  } catch (err) {
+    throw fail(`could not parse JSON (${err.message})`);
+  }
 
-    if (!keyData.private_key || !keyData.client_email) {
-      console.warn("⚠️ Service account key file is missing required fields");
-      return null;
-    }
+  if (keyData.type !== "service_account" || !keyData.private_key || !keyData.client_email) {
+    throw fail("not a service account key (expected type, client_email and private_key fields)");
+  }
 
-    // Create JWT for Google OAuth
-    const { default: jwt } = await import("jsonwebtoken");
-    
-    const now = Math.floor(Date.now() / 1000);
-    const claim = {
+  const base64url = (value) => Buffer.from(value).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = base64url(
+    JSON.stringify({
       iss: keyData.client_email,
-      scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/cloud-platform",
-      aud: "https://oauth2.googleapis.com/token",
+      scope: "https://www.googleapis.com/auth/datastore",
+      aud: keyData.token_uri || "https://oauth2.googleapis.com/token",
       exp: now + 3600,
       iat: now
-    };
+    })
+  );
+  const unsigned = `${header}.${claim}`;
+  const signature = crypto.createSign("RSA-SHA256").update(unsigned).sign(keyData.private_key, "base64url");
 
-    const token = jwt.sign(claim, keyData.private_key, { algorithm: "RS256" });
-
-    // Exchange JWT for access token
-    const res = await fetch("https://oauth2.googleapis.com/token", {
+  let res;
+  try {
+    res = await fetch(keyData.token_uri || "https://oauth2.googleapis.com/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        assertion: token
+        assertion: `${unsigned}.${signature}`
       })
     });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.warn(`Service account token exchange failed (${res.status}):`, errorText);
-      return null;
-    }
-
-    const data = await res.json();
-    if (data.access_token) {
-      console.log("✅ Retrieved access token from service account key");
-      return data.access_token;
-    }
-
-    return null;
   } catch (err) {
-    console.warn("Failed to get access token from service account:", err.message);
-    return null;
+    throw fail(`token request failed (${err.message})`);
   }
+
+  if (!res.ok) {
+    throw fail(`token exchange returned ${res.status}: ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  if (!data.access_token) {
+    throw fail("token exchange response had no access_token");
+  }
+  return data.access_token;
 }
 
 /**

@@ -56,7 +56,7 @@ The schedule sync now supports multiple authentication methods, automatically ch
                     ▼         │             │
         ┌────────────────┐   │             │
         │ Create JWT     │   │             │
-        │ (jsonwebtoken) │   │             │
+        │ (node crypto)  │   │             │
         └────────────────┘   │             │
                     │         │             │
                     ▼         │             │

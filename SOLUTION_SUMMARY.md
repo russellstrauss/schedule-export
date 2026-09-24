@@ -23,15 +23,13 @@ Added service account key file authentication support using the standard `GOOGLE
 
 1. **Enhanced `get-schedule/iatse927-firestore-auth.js`:**
    - Added `getServiceAccountToken()` function
-   - Implements JWT signing using `jsonwebtoken` package
+   - Signs the JWT with Node's built-in `crypto` (no extra dependency)
    - Exchanges JWT for OAuth2 access token
    - Updated `getGcloudAccessToken()` to try three methods in order:
      1. Metadata server (Cloud Functions/Cloud Run)
      2. Service account key file (Android/Termux)
      3. gcloud CLI (local development)
 
-2. **Added dependency:**
-   - `jsonwebtoken: ^9.0.2` for JWT signing
 
 3. **Updated authentication flow:**
    ```
@@ -129,7 +127,6 @@ All authentication methods verified:
 ## Files Changed
 
 - `get-schedule/iatse927-firestore-auth.js` - Enhanced authentication
-- `package.json` - Added jsonwebtoken dependency
 - `.env.example` - Added service account instructions
 
 ## Files Added
