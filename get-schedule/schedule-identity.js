@@ -18,7 +18,7 @@ export const normalizeStatus = (status) => {
 	if (!status) return "confirmed";
 	const lower = status.toLowerCase();
 	// Map Rhino "called" status to Google "tentative"
-	if (lower === "called") return "tentative";
+	if (lower === "called" || lower === "unconfirmed") return "tentative";
 	// Map other common status values to valid Google Calendar statuses
 	if (lower === "cancelled" || lower === "canceled") return "cancelled";
 	if (lower === "tentative") return "tentative";
