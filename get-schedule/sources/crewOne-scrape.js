@@ -421,7 +421,7 @@ async function scrapeEventDetail(page) {
         ? "declined"
         : looksLikeOpenOffer
           ? "pending"
-          : "accepted";
+          : "unknown";
 
     return {
       eventTypeLine: eventTypeLine || "",
@@ -531,18 +531,24 @@ export async function fetchSchedule(page) {
     }
 
     const detail = rowObj.detailUrl ? await fetchEventDetail(page, rowObj.detailUrl, detailCache) : null;
-    const offerState =
+    let offerState =
       rowObj.section === "offers"
         ? detail?.offerState === "declined"
           ? "declined"
           : "pending"
-        : detail?.offerState || "accepted";
+        : detail?.offerState || "unknown";
 
     let offerDeadlineText = detail?.offerDeadlineText || "";
     if (offerDeadlineText && rowObj.detailUrl) {
       rememberOfferDeadline(rowObj.detailUrl, offerDeadlineText);
     } else if (!offerDeadlineText && rowObj.detailUrl) {
       offerDeadlineText = recallOfferDeadline(rowObj.detailUrl);
+    }
+    // A response page can lose its offer controls after submission or expiry.
+    // The remembered deadline still proves this was an offer; unless the page
+    // explicitly reports acceptance or decline, keep it unconfirmed.
+    if (offerState === "unknown") {
+      offerState = offerDeadlineText ? "pending" : "accepted";
     }
     if (rowObj.section === "offers" && offerState === "pending" && !offerDeadlineText) {
       console.warn(

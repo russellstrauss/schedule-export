@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { rememberOfferDeadline } from "./offer-deadline-cache.js";
+import { toGoogleEvent } from "../utils.js";
 import {
   getCredentials,
   parseCrew1DateTime,
@@ -156,7 +157,7 @@ describe("crewOne", () => {
     expect(text).toContain("Parking in Ruby lot.");
   });
 
-  it("fetchSchedule preserves detail-page offer deadline text for reminder creation", async () => {
+  it("keeps an offer unconfirmed when its deadline remains but response controls disappear", async () => {
     process.env.CREWONE_EMAIL = "a@b.com";
     process.env.CREWONE_PASSWORD = "secret";
 
@@ -199,7 +200,7 @@ describe("crewOne", () => {
             generalNotes: "",
             venueNotes: "",
             offerDeadlineText: "This offer closes September 25, 2026 at 9:11 AM",
-            offerState: "pending"
+            offerState: "unknown"
           });
         }
         return Promise.resolve(undefined);
@@ -361,6 +362,10 @@ describe("crewOne", () => {
         show: "CHAYANNE 2026",
         callTime: "20:30",
         offerState: "pending"
+      });
+      expect(toGoogleEvent(entries[0])).toMatchObject({
+        summary: "UNCONFIRMED => 7:30am CHAYANNE 2026 (Crew 1)",
+        status: "tentative"
       });
       const reminder = buildCrewOneDeadlineReminderEvent(entries[0]);
       expect(reminder).toMatchObject({
