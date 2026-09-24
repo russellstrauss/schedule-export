@@ -54,7 +54,7 @@ vi.mock("./auth-handler.js", () => ({
   withAuthRetry: vi.fn(async (_auth, fn) => fn({}))
 }));
 
-import { ingestIatse927, trySyncIatse927FromStore, syncIatse927FromMessages } from "./ingest-iatse927.js";
+import { storeIatse927Message, trySyncIatse927FromStore, syncIatse927FromMessages } from "./ingest-iatse927.js";
 import {
   purgeOrphanedSourceEvents,
   consolidateDuplicateSourceEvents,
@@ -63,17 +63,17 @@ import {
 import { appendMessage, loadAllMessages } from "./iatse927-message-store.js";
 import { resolveScheduleEntriesWithValidation } from "./iatse927-gemini.js";
 
-describe("ingestIatse927", () => {
+describe("storeIatse927Message", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("rejects empty text", async () => {
-    await expect(ingestIatse927({ text: "" })).rejects.toThrow(/non-empty text/);
+    await expect(storeIatse927Message({ text: "" })).rejects.toThrow(/non-empty text/);
   });
 
   it("stores message in Firestore without running Gemini or calendar sync", async () => {
-    const result = await ingestIatse927({
+    const result = await storeIatse927Message({
       text: SAMPLE_REMINDER_SMS
     });
 

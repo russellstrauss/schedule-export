@@ -322,17 +322,6 @@ export async function loadAllMessages() {
   }
 }
 
-/**
- * @param {{ text: string; receivedAt: Date | null }[]} messages
- * @returns {string}
- */
-export function combineMessageTexts(messages) {
-  return messages
-    .map((m) => m.text.trim())
-    .filter(Boolean)
-    .join("\n\n---\n\n");
-}
-
 /** Reset client (for tests). */
 export function resetStoreForTests() {
   db = null;

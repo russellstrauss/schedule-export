@@ -3,6 +3,26 @@
 # Update environment variables for deployed Cloud Function
 # This updates variables without redeploying the entire function
 
+# Auto-setup gcloud authentication if running in Cloud Agent with service account key
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "$GCLOUD_SERVICE_ACCOUNT_KEY" ] && [ ! -f "$HOME/.config/gcloud/application_default_credentials.json" ]; then
+    echo "🔧 Detected Cloud Agent environment with service account key..."
+    if [ -f "$SCRIPT_DIR/setup-gcloud-auth.sh" ]; then
+        echo "🔐 Running gcloud authentication setup..."
+        bash "$SCRIPT_DIR/setup-gcloud-auth.sh"
+        if [ $? -ne 0 ]; then
+            echo "❌ Failed to set up gcloud authentication"
+            exit 1
+        fi
+        echo ""
+    fi
+fi
+
+# Add gcloud to PATH if installed in /tmp (Cloud Agent environment)
+if [ -d "/tmp/google-cloud-sdk/bin" ]; then
+    export PATH="/tmp/google-cloud-sdk/bin:$PATH"
+fi
+
 REGION=${1:-us-central1}
 FUNCTION_NAME="sync-schedule"
 

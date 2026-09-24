@@ -100,7 +100,7 @@ export async function syncSchedule(req, res) {
         return;
       }
 
-      const { storeIatse927Message, syncIatse927AfterIngest } = await import(
+      const { storeIatse927Message, trySyncIatse927FromStore } = await import(
         "./get-schedule/ingest-iatse927.js"
       );
       const payload = body && typeof body === "object" ? body : {};
@@ -117,7 +117,7 @@ export async function syncSchedule(req, res) {
       });
 
       try {
-        const syncResult = await syncIatse927AfterIngest();
+        const syncResult = await trySyncIatse927FromStore();
         if (!syncResult) {
           console.warn("⚠️  IATSE 927 background sync skipped (check GEMINI_API_KEY / Firestore)");
         } else {

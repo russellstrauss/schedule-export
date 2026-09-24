@@ -50,11 +50,8 @@ node tests/run-integration-tests.js
 
 ## What Gets Tested
 
-- ✅ Function responds to HTTP requests
-- ✅ Function returns proper JSON structure
-- ✅ Function handles CORS preflight requests
-- ✅ Function completes within reasonable time
-- ✅ Function returns success status
+- One live POST: success, JSON body, and completion under 5 minutes
+- CORS preflight (`OPTIONS`)
 
 ## Email Notifications
 
