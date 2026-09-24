@@ -157,7 +157,7 @@ describe("crewOne", () => {
     expect(text).toContain("Parking in Ruby lot.");
   });
 
-  it("keeps an offer unconfirmed when its deadline remains but response controls disappear", async () => {
+  it("keeps an upcoming call confirmed even when old offer metadata remains", async () => {
     process.env.CREWONE_EMAIL = "a@b.com";
     process.env.CREWONE_PASSWORD = "secret";
 
@@ -185,7 +185,7 @@ describe("crewOne", () => {
             event: "A TEST SHOW",
             where: "The Venue",
             position: "",
-            dateTime: "Fri Sep 25 8:00 AM",
+            dateTime: "Fri Oct 2 8:00 AM",
             detailUrl: "https://portal.crew1.com/view_upcoming/123"
           }]);
         }
@@ -211,8 +211,12 @@ describe("crewOne", () => {
     const entries = await fetchSchedule(page);
 
     expect(entries[0].offerDeadlineText).toBe("This offer closes September 25, 2026 at 9:11 AM");
-    expect(entries[0].offerState).toBe("pending");
-    expect(buildCrewOneDeadlineReminderEvent(entries[0])).not.toBeNull();
+    expect(entries[0].offerState).toBe("accepted");
+    expect(toGoogleEvent(entries[0])).toMatchObject({
+      summary: "7:30am A TEST SHOW (Crew 1)",
+      status: "confirmed"
+    });
+    expect(buildCrewOneDeadlineReminderEvent(entries[0])).toBeNull();
   });
 
   it("parses crew one offer deadlines and builds a reminder event", () => {
