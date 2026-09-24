@@ -90,15 +90,36 @@ GOOGLE_APPLICATION_CREDENTIALS=/data/data/com.termux/files/home/firestore-key.js
 
 # Required for IATSE (get from https://aistudio.google.com/apikey)
 GEMINI_API_KEY=your-gemini-api-key-here
+```
 
-# Required for Google Calendar (get from renew-auth.sh on your computer)
+Save and exit (Ctrl+X, then Y, then Enter).
+
+**For Google Calendar OAuth, you have TWO options:**
+
+#### Option A: Copy JSON Files (Recommended - Simpler)
+Transfer these files from your computer to Android:
+- `get-schedule/google-calendar/credentials.json`
+- `get-schedule/google-calendar/token.json`
+
+Place them in the same location on Android:
+```bash
+mkdir -p ~/Sites/cloud-sync/get-schedule/google-calendar/
+# Then copy the files into this directory
+```
+
+**No need to add OAuth variables to .env!**
+
+#### Option B: Use Environment Variables
+Add to your `.env`:
+```bash
+# Google Calendar OAuth (get from credentials.json and token.json on your computer)
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=http://localhost
 GOOGLE_TOKEN='{"access_token":"ya29...","refresh_token":"1//...","token_type":"Bearer","expiry_date":...}'
 ```
 
-Save and exit (Ctrl+X, then Y, then Enter).
+See `ANDROID_OAUTH_OPTIONS.md` for detailed instructions on both options.
 
 ```bash
 # 3. Secure the files
