@@ -133,9 +133,82 @@ export function getFirestoreProjectId() {
 }
 
 /**
+ * Get access token from service account key file if GOOGLE_APPLICATION_CREDENTIALS is set.
+ * @returns {Promise<string | null>}
+ */
+async function getServiceAccountToken() {
+  const rawPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim().replace(/^['"]|['"]$/g, "");
+  if (!rawPath) return null;
+
+  const fs = await import("fs");
+  const os = await import("os");
+  const crypto = await import("crypto");
+  const keyPath = rawPath.replace(/^~(?=$|\/)/, os.homedir());
+
+  // Once a key file is configured, report its failure instead of silently falling
+  // through to gcloud (which is usually absent where a key file is used, e.g. Termux).
+  const fail = (reason) => new Error(`Firestore auth failed via GOOGLE_APPLICATION_CREDENTIALS (${keyPath}): ${reason}`);
+
+  if (!fs.existsSync(keyPath)) {
+    throw fail("file not found");
+  }
+
+  let keyData;
+  try {
+    keyData = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+  } catch (err) {
+    throw fail(`could not parse JSON (${err.message})`);
+  }
+
+  if (keyData.type !== "service_account" || !keyData.private_key || !keyData.client_email) {
+    throw fail("not a service account key (expected type, client_email and private_key fields)");
+  }
+
+  const base64url = (value) => Buffer.from(value).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claim = base64url(
+    JSON.stringify({
+      iss: keyData.client_email,
+      scope: "https://www.googleapis.com/auth/datastore",
+      aud: keyData.token_uri || "https://oauth2.googleapis.com/token",
+      exp: now + 3600,
+      iat: now
+    })
+  );
+  const unsigned = `${header}.${claim}`;
+  const signature = crypto.createSign("RSA-SHA256").update(unsigned).sign(keyData.private_key, "base64url");
+
+  let res;
+  try {
+    res = await fetch(keyData.token_uri || "https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion: `${unsigned}.${signature}`
+      })
+    });
+  } catch (err) {
+    throw fail(`token request failed (${err.message})`);
+  }
+
+  if (!res.ok) {
+    throw fail(`token exchange returned ${res.status}: ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  if (!data.access_token) {
+    throw fail("token exchange response had no access_token");
+  }
+  return data.access_token;
+}
+
+/**
  * @returns {Promise<string>}
  */
 export async function getGcloudAccessToken() {
+  // 1. Try metadata server (Cloud Functions/Cloud Run)
   if (isCloudRuntime()) {
     try {
       const res = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", {
@@ -156,6 +229,13 @@ export async function getGcloudAccessToken() {
     }
   }
 
+  // 2. Try service account key file (Android/Termux, local dev)
+  const serviceAccountToken = await getServiceAccountToken();
+  if (serviceAccountToken) {
+    return serviceAccountToken;
+  }
+
+  // 3. Try gcloud CLI (local dev with gcloud installed)
   try {
     return execSync("gcloud auth print-access-token", {
       encoding: "utf8",
@@ -163,7 +243,9 @@ export async function getGcloudAccessToken() {
     }).trim();
   } catch {
     throw new Error(
-      "Firestore auth failed. Run: gcloud auth login && gcloud auth application-default login"
+      "Firestore auth failed. Options:\n" +
+      "1. Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json\n" +
+      "2. Run: gcloud auth login && gcloud auth application-default login"
     );
   }
 }
