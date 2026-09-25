@@ -293,6 +293,7 @@ describe("crewOne", () => {
   it("fetchSchedule includes pending offers from Offers Needing Your Response", async () => {
     process.env.CREWONE_EMAIL = "a@b.com";
     process.env.CREWONE_PASSWORD = "secret";
+    const sectionScrapeCalls = [];
 
     const detailUrl = "https://portal.crew1.com/response/456";
     const cachePath = path.join(
@@ -319,6 +320,7 @@ describe("crewOne", () => {
           return Promise.resolve(undefined);
         }
         if (src.includes("querySelectorAll('table')") && src.includes("detailLink")) {
+          sectionScrapeCalls.push([args[0], args[1]]);
           if (/Offers Needing Your Response/i.test(String(args[0] || ""))) {
             return Promise.resolve([{
               event: "CHAYANNE 2026",
@@ -353,6 +355,8 @@ describe("crewOne", () => {
       const entries = await fetchSchedule(page);
 
       expect(entries).toHaveLength(2);
+      expect(sectionScrapeCalls).toContainEqual(["Upcoming Calls", false]);
+      expect(sectionScrapeCalls).toContainEqual(["Offers Needing Your Response", false]);
       expect(entries[0]).toMatchObject({
         show: "CHAYANNE 2026",
         venue: "STATE FARM ARENA",
