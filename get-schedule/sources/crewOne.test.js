@@ -213,7 +213,7 @@ describe("crewOne", () => {
     expect(entries[0].offerDeadlineText).toBe("This offer closes September 25, 2026 at 9:11 AM");
     expect(entries[0].offerState).toBe("accepted");
     expect(toGoogleEvent(entries[0])).toMatchObject({
-      summary: "7:30am A TEST SHOW (Crew 1)",
+      summary: "7:30am A TEST SHOW [Crew 1]",
       status: "confirmed"
     });
     expect(buildCrewOneDeadlineReminderEvent(entries[0])).toBeNull();
@@ -368,7 +368,7 @@ describe("crewOne", () => {
         offerState: "pending"
       });
       expect(toGoogleEvent(entries[0])).toMatchObject({
-        summary: "UNCONFIRMED => 7:30am CHAYANNE 2026 (Crew 1)",
+        summary: "UNCONFIRMED => 7:30am CHAYANNE 2026 - STAGEHAND [Crew 1]",
         status: "tentative"
       });
       const reminder = buildCrewOneDeadlineReminderEvent(entries[0]);

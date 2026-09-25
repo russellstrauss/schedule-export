@@ -92,16 +92,20 @@ export const toGoogleEvent = (entry, options = {}) => {
 
   let summary;
   const sourceDisplayName = getSourceDisplayName(source);
-  const addSourceSuffix = (title) => sourceDisplayName ? `${title} (${sourceDisplayName})` : title;
+  const position = String(entry.position || "").trim();
+  const addTitleSuffixes = (title) => {
+    const titleWithPosition = position ? `${title} - ${position}` : title;
+    return sourceDisplayName ? `${titleWithPosition} [${sourceDisplayName}]` : titleWithPosition;
+  };
 
   if (source === "rhino") {
     const isCalled = entry.status?.toLowerCase() === "called";
     const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
-    summary = isCalled ? addSourceSuffix(showTitle) : addSourceSuffix(`${formattedTime} ${showTitle}`);
+    summary = isCalled ? addTitleSuffixes(showTitle) : addTitleSuffixes(`${formattedTime} ${showTitle}`);
   } else if (isCrewOneUnconfirmed) {
-    summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${entry.show}`);
+    summary = addTitleSuffixes(`UNCONFIRMED => ${formattedTime} ${entry.show}`);
   } else {
-    summary = addSourceSuffix(`${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`);
+    summary = addTitleSuffixes(`${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`);
   }
 
   let description;
