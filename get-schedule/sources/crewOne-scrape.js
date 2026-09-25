@@ -331,8 +331,8 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
   }, headingPattern, allowGlobalFallback);
 }
 
-async function scrapeUpcomingRows(page) {
-  return scrapePortalRows(page, "Upcoming Calls", true);
+async function scrapeUpcomingRows(page, allowGlobalFallback = false) {
+  return scrapePortalRows(page, "Upcoming Calls", allowGlobalFallback);
 }
 
 async function scrapeOfferRows(page) {
@@ -525,7 +525,10 @@ export async function fetchSchedule(page) {
       const listUrl = new URL('/view_upcoming', base).toString();
       await gotoPortalPage(page, listUrl);
       await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => {});
-      const altRows = await scrapeUpcomingRows(page);
+      // The dedicated upcoming-calls page may not repeat the dashboard heading,
+      // so only that page may scan all tables as a fallback. On the dashboard,
+      // doing so can misclassify the open-offers table as accepted calls.
+      const altRows = await scrapeUpcomingRows(page, true);
       if (altRows && altRows.length > upcomingCount) {
         for (const row of altRows) {
           const tagged = { ...row, section: "upcoming" };
