@@ -40,6 +40,27 @@ ENV_VARS=${ENV_VARS%,}
 
 echo "📝 Setting environment variables..."
 
+# Functions Framework reads package.json "main". Point it at the test entry
+# for this deploy, then restore the original file afterward.
+PACKAGE_JSON="$(cd "$(dirname "$0")/.." && pwd)/package.json"
+PACKAGE_JSON_BACKUP="$(mktemp)"
+cp "$PACKAGE_JSON" "$PACKAGE_JSON_BACKUP"
+restore_package_json() {
+  cp "$PACKAGE_JSON_BACKUP" "$PACKAGE_JSON"
+  rm -f "$PACKAGE_JSON_BACKUP"
+}
+trap restore_package_json EXIT
+python3 - "$PACKAGE_JSON" << 'PY'
+import json, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    pkg = json.load(f)
+pkg["main"] = "tests/test-function.js"
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(pkg, f, indent=2)
+    f.write("\n")
+PY
+
 gcloud functions deploy $FUNCTION_NAME \
   --gen2 \
   --runtime=nodejs24 \
@@ -51,7 +72,8 @@ gcloud functions deploy $FUNCTION_NAME \
   --memory=2GB \
   --timeout=600s \
   --max-instances=1 \
-  --set-env-vars="$ENV_VARS"
+  --set-env-vars="$ENV_VARS" \
+  --set-build-env-vars="FUNCTION_TARGET=runTests"
 
 echo "✅ Test function deployed!"
 echo ""

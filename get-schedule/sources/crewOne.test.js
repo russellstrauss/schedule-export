@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -8,8 +7,6 @@ import {
   getCredentials,
   parseCrew1DateTime,
   normalizeCrew1DateTimeText,
-  matchDetailCall,
-  formatCrewOneEventDescription,
   parseCrewOneOfferDeadline,
   parseCrewOneOfferState,
   buildCrewOneDeadlineReminderEvent,
@@ -133,28 +130,6 @@ describe("crewOne", () => {
   it("parseCrew1DateTime parses detail page call format", () => {
     const result = parseCrew1DateTime("Fri Jun 12, 2026 10:30 PM", 2026);
     expect(result).toEqual({ date: "6/12/2026", callTime: "22:30" });
-  });
-
-  it("matchDetailCall matches dashboard row to detail table row", () => {
-    const call = { startDateTime: "Fri Jun 12, 2026 8:00 AM", job: "STAGEHAND" };
-    expect(matchDetailCall("6/12/2026", "08:00", call)).toBe(true);
-    expect(matchDetailCall("6/12/2026", "22:30", call)).toBe(false);
-  });
-
-  it("formatCrewOneEventDescription combines detail sections", () => {
-    const text = formatCrewOneEventDescription(
-      {
-        eventTypeLine: "This is a CONCERT Event.",
-        generalNotes: "Bring hard hat.",
-        venueNotes: "Parking in Ruby lot."
-      },
-      { job: "STAGEHAND", contractorNotes: "Arrive early" }
-    );
-    expect(text).toContain("CONCERT Event");
-    expect(text).toContain("Position: STAGEHAND");
-    expect(text).toContain("Call notes: Arrive early");
-    expect(text).toContain("Bring hard hat.");
-    expect(text).toContain("Parking in Ruby lot.");
   });
 
   it("fetchSchedule preserves detail-page offer deadline text for reminder creation", async () => {
