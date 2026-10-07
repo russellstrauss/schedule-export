@@ -1,9 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   parseRequestBody,
-  isIngestRequest,
-  verifyIngestPhone,
-  normalizePhone
+  isIngestRequest
 } from "./request-router.js";
 
 describe("parseRequestBody", () => {
@@ -41,57 +39,5 @@ describe("isIngestRequest", () => {
         null
       )
     ).toBe(true);
-  });
-});
-
-describe("normalizePhone", () => {
-  it("strips non-digits and normalizes US leading 1", () => {
-    expect(normalizePhone("+1 (555) 123-4567")).toBe("5551234567");
-    expect(normalizePhone("5551234567")).toBe("5551234567");
-  });
-});
-
-describe("verifyIngestPhone", () => {
-  const original = process.env.IATSE_ALLOWED_PHONE;
-
-  beforeEach(() => {
-    process.env.IATSE_ALLOWED_PHONE = "+15551234567";
-  });
-
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env.IATSE_ALLOWED_PHONE;
-    } else {
-      process.env.IATSE_ALLOWED_PHONE = original;
-    }
-  });
-
-  it("accepts matching phone in body", () => {
-    expect(
-      verifyIngestPhone({
-        mode: "ingest",
-        source: "iatse927",
-        phone: "5551234567",
-        text: "hi"
-      })
-    ).toBe(true);
-  });
-
-  it("accepts phoneNumber field", () => {
-    expect(
-      verifyIngestPhone({ phoneNumber: "+1 555-123-4567", text: "hi" })
-    ).toBe(true);
-  });
-
-  it("rejects missing or wrong phone", () => {
-    expect(verifyIngestPhone({ text: "hi" })).toBe(false);
-    expect(verifyIngestPhone({ phone: "5559999999", text: "hi" })).toBe(false);
-  });
-
-  it("throws when allowed phone not configured", () => {
-    delete process.env.IATSE_ALLOWED_PHONE;
-    expect(() => verifyIngestPhone({ phone: "5551234567" })).toThrow(
-      /IATSE_ALLOWED_PHONE/
-    );
   });
 });

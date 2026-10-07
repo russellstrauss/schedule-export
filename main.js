@@ -1,8 +1,7 @@
 import getSchedule from "./get-schedule/get-schedule.js";
 import {
   parseRequestBody,
-  isIngestRequest,
-  verifyIngestPhone
+  isIngestRequest
 } from "./get-schedule/request-router.js";
 import { isCloudRuntime } from "./get-schedule/runtime-env.js";
 import { exchangeOAuthCode } from "./get-schedule/google-calendar/auth.js";
@@ -91,15 +90,6 @@ export async function syncSchedule(req, res) {
 
   if (isIngestRequest(req, body)) {
     try {
-      if (!verifyIngestPhone(body)) {
-        res.status(401).json({
-          success: false,
-          error: "Unauthorized: phone not allowed",
-          timestamp: new Date().toISOString()
-        });
-        return;
-      }
-
       const { storeIatse927Message, trySyncIatse927FromStore } = await import(
         "./get-schedule/ingest-iatse927.js"
       );

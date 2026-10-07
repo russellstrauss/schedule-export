@@ -50,7 +50,6 @@ Make sure your Cursor Dashboard has these secrets configured:
 - `CREWONE_EMAIL` - Crew One portal email
 - `CREWONE_PASSWORD` - Crew One portal password
 - `CREWONE_LOGIN_URL` - Crew One portal login URL
-- `IATSE_ALLOWED_PHONE` - Phone number for IATSE SMS ingest
 - `GEMINI_API_KEY` - Google AI Studio API key (for IATSE parsing)
 - `GEMINI_MODEL` - Gemini model name (optional, default: gemini-2.5-flash)
 
