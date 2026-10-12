@@ -1,5 +1,6 @@
-# Deploys sync-schedule when Cloud Build runs on a push to main.
-# Secret names must match Secret Manager. Payloads are not stored in this file.
+# Deploys the nightly sync function. The trigger may run in another project;
+# the function itself lives in rhino-schedule-sync. Existing environment
+# variables on the function are left in place.
 steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
@@ -7,6 +8,7 @@ steps:
       - functions
       - deploy
       - sync-schedule
+      - --project=rhino-schedule-sync
       - --gen2
       - --runtime=nodejs24
       - --region=us-central1
@@ -17,8 +19,6 @@ steps:
       - --memory=1GB
       - --timeout=600s
       - --max-instances=1
-      - --set-env-vars=^|^GOOGLE_CLOUD_PROJECT=$PROJECT_ID|SCHEDULE_SOURCES=rhino,crewOne|CREWONE_LOGIN_URL=https://portal.crew1.com/
-      - --set-secrets=RHINO_EMAIL=rhino-email:latest,RHINO_PASSWORD=rhino-password:latest,CREWONE_EMAIL=crewone-email:latest,CREWONE_PASSWORD=crewone-password:latest,GOOGLE_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_CLIENT_SECRET=google-oauth-client-secret:latest,GOOGLE_REDIRECT_URI=google-oauth-redirect-uri:latest,GOOGLE_TOKEN=google-oauth-token:latest,IATSE_ALLOWED_PHONE=iatse-allowed-phone:latest,GEMINI_API_KEY=gemini-api-key:latest
 timeout: 1200s
 options:
   logging: CLOUD_LOGGING_ONLY
