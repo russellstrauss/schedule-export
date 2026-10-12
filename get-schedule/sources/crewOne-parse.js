@@ -1,4 +1,8 @@
 import { formatDateTimeForTimezone, isEventInFuture } from "../schedule-time.js";
+import {
+  formatShowWithVenueAbbreviation,
+  resolveVenueAbbreviation
+} from "../venue-abbreviations.js";
 
 export const sourceId = "crewOne";
 
@@ -235,11 +239,16 @@ export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOne
   const start = formatDateTimeForTimezone(year, month, day, hours, minutes);
   const end = formatDateTimeForTimezone(year, month, day, hours, minutes + 30);
 
+  const showTitle = formatShowWithVenueAbbreviation(
+    entry.show,
+    resolveVenueAbbreviation(entry, sourceId)
+  );
+
   return {
     source: sourceId,
     kind: "deadlineReminder",
     rowId,
-    summary: `Offer deadline: ${entry.show}`,
+    summary: `Offer deadline: ${showTitle}`,
     location,
     description: [`Deadline reminder for ${entry.show}`, "", deadline.text].join("\n"),
     start,

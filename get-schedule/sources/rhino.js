@@ -1,5 +1,6 @@
-import { CALL_CANCELLED_LABEL } from "../utils.js";
 import { gotoPortalPage } from "../puppeteer.js";
+import { CALL_CANCELLED_LABEL } from "../utils.js";
+import { abbreviationFromShowTitle } from "../venue-abbreviations.js";
 
 export const sourceId = "rhino";
 
@@ -178,7 +179,14 @@ export async function fetchSchedule(page) {
       tableSelectors: RHINO_SCHEDULE_TABLE_SELECTORS
     });
 
-    return rows.map((row) => ({ ...row, source: sourceId }));
+    return rows.map((row) => {
+      const venueAbbreviation = abbreviationFromShowTitle(row.show);
+      return {
+        ...row,
+        source: sourceId,
+        ...(venueAbbreviation ? { venueAbbreviation } : {})
+      };
+    });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     let url = "";

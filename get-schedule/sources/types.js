@@ -6,6 +6,7 @@
  * @property {string} callTime - HH:mm
  * @property {string} show
  * @property {string} venue
+ * @property {string} [venueAbbreviation] - Short venue code from the portal, when the portal provides one
  * @property {string} location
  * @property {string} position
  * @property {string} type

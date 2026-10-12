@@ -8,6 +8,10 @@ import {
 } from "./iatse927-event-description.js";
 import { normalizeStatus, scheduleRowId, isEventCancelled } from "./schedule-identity.js";
 import {
+  formatShowWithVenueAbbreviation,
+  resolveVenueAbbreviation
+} from "./venue-abbreviations.js";
+import {
   addMinutesToZonedLocalTime,
   formatDateTimeForTimezone,
   formatTimeForTitle,
@@ -93,15 +97,18 @@ export const toGoogleEvent = (entry, options = {}) => {
   let summary;
   const sourceDisplayName = getSourceDisplayName(source);
   const addSourceSuffix = (title) => sourceDisplayName ? `${title} (${sourceDisplayName})` : title;
+  const venueAbbreviation = resolveVenueAbbreviation(entry, source);
+  const titledShow = (show) => formatShowWithVenueAbbreviation(show, venueAbbreviation);
 
   if (source === "rhino") {
     const isCalled = entry.status?.toLowerCase() === "called";
-    const showTitle = isCalled ? `UNCONFIRMED => ${entry.show}` : entry.show;
+    const showTitle = isCalled ? `UNCONFIRMED => ${titledShow(entry.show)}` : titledShow(entry.show);
     summary = isCalled ? addSourceSuffix(showTitle) : addSourceSuffix(`${formattedTime} ${showTitle}`);
   } else if (isCrewOneUnconfirmed) {
-    summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${entry.show}`);
+    summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${titledShow(entry.show)}`);
   } else {
-    summary = addSourceSuffix(`${formattedTime} ${source === "iatse927" ? iatse927EventTitle(entry) : entry.show}`);
+    const showName = source === "iatse927" ? iatse927EventTitle(entry) : entry.show;
+    summary = addSourceSuffix(`${formattedTime} ${titledShow(showName)}`);
   }
 
   let description;

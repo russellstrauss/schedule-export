@@ -213,19 +213,19 @@ describe("crewOne", () => {
     expect(entries[0].offerDeadlineText).toBe("This offer closes September 25, 2026 at 9:11 AM");
     expect(entries[0].offerState).toBe("accepted");
     expect(toGoogleEvent(entries[0])).toMatchObject({
-      summary: "7:30am A TEST SHOW (Crew 1)",
+      summary: "7:30am (VENUE) A TEST SHOW (Crew 1)",
       status: "confirmed"
     });
     expect(buildCrewOneDeadlineReminderEvent(entries[0])).toBeNull();
   });
 
   it("parses crew one offer deadlines and builds a reminder event", () => {
-    const deadlineText = "This offer closes September 25, 2026 at 9:11 AM";
+    const deadlineText = "This offer closes January 25, 2027 at 9:11 AM";
     const deadline = parseCrewOneOfferDeadline(deadlineText);
     expect(deadline).toEqual({
-      month: 9,
+      month: 1,
       day: 25,
-      year: 2026,
+      year: 2027,
       hours: 9,
       minutes: 11,
       text: deadlineText
@@ -246,10 +246,10 @@ describe("crewOne", () => {
     expect(reminder).toMatchObject({
       source: "crewOne",
       kind: "deadlineReminder",
-      summary: "Offer deadline: A TEST SHOW",
-      start: "2026-09-25T09:11:00",
-      end: "2026-09-25T09:41:00",
-      rowId: "9/25/2026 | 09:11 | A TEST SHOW | The Venue|deadlineReminder",
+      summary: "Offer deadline: (VENUE) A TEST SHOW",
+      start: "2027-01-25T09:11:00",
+      end: "2027-01-25T09:41:00",
+      rowId: "1/25/2027 | 09:11 | A TEST SHOW | The Venue|deadlineReminder",
       description: expect.stringContaining(deadlineText)
     });
   });
@@ -264,7 +264,7 @@ describe("crewOne", () => {
       callTime: "08:00",
       show: "A TEST SHOW",
       venue: "The Venue",
-      offerDeadlineText: "This offer closes September 25, 2026 at 9:11 AM",
+      offerDeadlineText: "This offer closes January 25, 2027 at 9:11 AM",
       offerState: state
     });
 
@@ -300,7 +300,7 @@ describe("crewOne", () => {
       `crewone-offer-deadlines-test-${Date.now()}.json`
     );
     process.env.CREWONE_OFFER_DEADLINE_CACHE = cachePath;
-    rememberOfferDeadline(detailUrl, "This offer closes September 25, 2026 at 9:00 AM");
+    rememberOfferDeadline(detailUrl, "This offer closes January 25, 2027 at 9:00 AM");
 
     const page = {
       async goto() {},
@@ -360,7 +360,7 @@ describe("crewOne", () => {
         date: "9/28/2026",
         callTime: "08:00",
         offerState: "pending",
-        offerDeadlineText: "This offer closes September 25, 2026 at 9:00 AM"
+        offerDeadlineText: "This offer closes January 25, 2027 at 9:00 AM"
       });
       expect(entries[1]).toMatchObject({
         show: "CHAYANNE 2026",
@@ -368,14 +368,14 @@ describe("crewOne", () => {
         offerState: "pending"
       });
       expect(toGoogleEvent(entries[0])).toMatchObject({
-        summary: "UNCONFIRMED => 7:30am CHAYANNE 2026 (Crew 1)",
+        summary: "UNCONFIRMED => 7:30am (SFA) CHAYANNE 2026 (Crew 1)",
         status: "tentative"
       });
       const reminder = buildCrewOneDeadlineReminderEvent(entries[0]);
       expect(reminder).toMatchObject({
-        summary: "Offer deadline: CHAYANNE 2026",
-        start: "2026-09-25T09:00:00",
-        rowId: "9/25/2026 | 09:00 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder"
+        summary: "Offer deadline: (SFA) CHAYANNE 2026",
+        start: "2027-01-25T09:00:00",
+        rowId: "1/25/2027 | 09:00 | CHAYANNE 2026 | STATE FARM ARENA|deadlineReminder"
       });
     } finally {
       delete process.env.CREWONE_OFFER_DEADLINE_CACHE;
