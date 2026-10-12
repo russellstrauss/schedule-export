@@ -133,11 +133,9 @@ IATSE ingest stores message text in Firestore collection `iatse927_messages`. If
      --role="roles/datastore.user"
    ```
 
-3. Set `IATSE_ALLOWED_PHONE` in `.env` and redeploy (see `.env.example`).
+3. **Gemini (required):** Create an API key at [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` in `.env` before deploy. On each ingest, the message is stored in Firestore, then **all** stored SMS messages are loaded and sent to Gemini in one pass (extract with built-in double-check against thread context) to parse and merge shifts. The calendar is fully replaced for IATSE events (past and future). If the key is missing or the API fails, ingest returns an error and does not sync the calendar. Free-tier rate limits apply; typical personal SMS volume is fine.
 
-4. **Gemini (required):** Create an API key at [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` in `.env` before deploy. On each ingest, the message is stored in Firestore, then **all** stored SMS messages are loaded and sent to Gemini in one pass (extract with built-in double-check against thread context) to parse and merge shifts. The calendar is fully replaced for IATSE events (past and future). If the key is missing or the API fails, ingest returns an error and does not sync the calendar. Free-tier rate limits apply; typical personal SMS volume is fine.
-
-5. **Bootstrap historical threads (one-time, local):** Export Google Messages RCS threads to `.txt` files, then:
+4. **Bootstrap historical threads (one-time, local):** Export Google Messages RCS threads to `.txt` files, then:
 
    ```bash
    npm run bootstrap:iatse927 -- get-schedule/fixtures/shawn-scheduling.txt get-schedule/fixtures/tyler-reminders.txt --dry-run
@@ -146,7 +144,7 @@ IATSE ingest stores message text in Firestore collection `iatse927_messages`. If
 
    Requires local `.env` with Firestore credentials, `GEMINI_API_KEY`, and Google Calendar OAuth. Use `--no-sync` to import messages only. Use `--ref 2026-06-06` to set the reference date for year inference on pasted exports.
 
-6. **Re-sync from Firestore (no new SMS):** When messages are already stored and you want to refresh the calendar:
+5. **Re-sync from Firestore (no new SMS):** When messages are already stored and you want to refresh the calendar:
 
    ```bash
    npm run sync:iatse927

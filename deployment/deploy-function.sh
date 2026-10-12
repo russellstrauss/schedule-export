@@ -83,9 +83,6 @@ fi
 if [ -n "$GOOGLE_TOKEN" ]; then
   ENV_VARS="${ENV_VARS},GOOGLE_TOKEN=${GOOGLE_TOKEN}"
 fi
-if [ -n "$IATSE_ALLOWED_PHONE" ]; then
-  ENV_VARS="${ENV_VARS},IATSE_ALLOWED_PHONE=${IATSE_ALLOWED_PHONE}"
-fi
 if [ -n "$GEMINI_API_KEY" ]; then
   ENV_VARS="${ENV_VARS},GEMINI_API_KEY=${GEMINI_API_KEY}"
 fi
@@ -93,7 +90,7 @@ if [ -n "$GEMINI_MODEL" ]; then
   ENV_VARS="${ENV_VARS},GEMINI_MODEL=${GEMINI_MODEL}"
 fi
 
-echo "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, IATSE_ALLOWED_PHONE, GEMINI_*, plus Google OAuth vars)"
+echo "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, GEMINI_*, plus Google OAuth vars)"
 
 # Step 3: Deploy the function
 echo ""
