@@ -295,7 +295,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry);
 
-    expect(result.summary).toBe('7:30am (CEPAC) ERYKAH BADU (Rhino)'); // 30 min before 8am
+    expect(result.summary).toBe('7:30am (CEPAC) ERYKAH BADU - SH [Rhino]'); // 30 min before 8am
     expect(result.location).toBe('COBB ENERGY PERFORMING ARTS CENTRE - ATLANTA GA');
     expect(result.status).toBe('confirmed');
     expect(result.start).toMatch(/^2025-11-23T07:30:00$/); // 30 min before call time
@@ -321,7 +321,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'crewOne' });
 
-    expect(result.summary).toBe('7:30am (ARENA) SECOND PORTAL GIG (Crew 1)');
+    expect(result.summary).toBe('7:30am (ARENA) SECOND PORTAL GIG - SH [Crew 1]');
     expect(result.source).toBe('crewOne');
   });
 
@@ -342,7 +342,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'crewOne' });
 
-    expect(result.summary).toBe('UNCONFIRMED => 7:30am (VENUE) A TEST SHOW (Crew 1)');
+    expect(result.summary).toBe('UNCONFIRMED => 7:30am (VENUE) A TEST SHOW [Crew 1]');
     expect(result.status).toBe('tentative');
   });
 
@@ -363,7 +363,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'crewOne' });
 
-    expect(result.summary).toBe('7:30am (VENUE) A TEST SHOW (Crew 1)');
+    expect(result.summary).toBe('7:30am (VENUE) A TEST SHOW [Crew 1]');
     expect(result.status).toBe('confirmed');
   });
 
@@ -403,7 +403,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry, { source: 'iatse927' });
 
-    expect(result.summary).toBe('9:30pm (CA) Charlie Puth (IATSE)');
+    expect(result.summary).toBe('9:30pm (CA) Charlie Puth [IATSE]');
   });
 
   it('should handle "called" status with UNCONFIRMED prefix', () => {
@@ -422,7 +422,7 @@ describe('toGoogleEvent', () => {
 
     const result = toGoogleEvent(entry);
 
-    expect(result.summary).toBe('UNCONFIRMED => (GWCC) 2025 T-MOBILE SEC CHAMPIONSHIP (Rhino)');
+    expect(result.summary).toBe('UNCONFIRMED => (GWCC) 2025 T-MOBILE SEC CHAMPIONSHIP - SH [Rhino]');
     expect(result.status).toBe('tentative');
   });
 
@@ -440,7 +440,7 @@ describe('toGoogleEvent', () => {
       notes: ''
     });
 
-    expect(result.summary).toBe('UNCONFIRMED => (ARENA) RHINO SHOW (Rhino)');
+    expect(result.summary).toBe('UNCONFIRMED => (ARENA) RHINO SHOW - SH [Rhino]');
     expect(result.status).toBe('tentative');
   });
 
@@ -817,8 +817,8 @@ describe('logAndMapEvents future-only filtering', () => {
     });
 
     expect(mapped.map((event) => event.summary)).toEqual([
-      '8:30am (LA) Lakewood Amphitheatre (IATSE)',
-      '8:30am (SFA) State Farm Arena (IATSE)'
+      '8:30am (LA) Lakewood Amphitheatre - SH [IATSE]',
+      '8:30am (SFA) State Farm Arena - SH [IATSE]'
     ]);
   });
 });

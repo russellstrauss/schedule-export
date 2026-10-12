@@ -96,7 +96,11 @@ export const toGoogleEvent = (entry, options = {}) => {
 
   let summary;
   const sourceDisplayName = getSourceDisplayName(source);
-  const addSourceSuffix = (title) => sourceDisplayName ? `${title} (${sourceDisplayName})` : title;
+  const position = String(entry.position || "").trim();
+  const addTitleSuffixes = (title) => {
+    const titleWithPosition = position ? `${title} - ${position}` : title;
+    return sourceDisplayName ? `${titleWithPosition} [${sourceDisplayName}]` : titleWithPosition;
+  };
   const venueAbbreviation = resolveVenueAbbreviation(entry, source);
   const titledShow = (show) => formatShowWithVenueAbbreviation(show, venueAbbreviation);
 
@@ -106,13 +110,13 @@ export const toGoogleEvent = (entry, options = {}) => {
     );
     const showTitle = isUnconfirmed ? `UNCONFIRMED => ${titledShow(entry.show)}` : titledShow(entry.show);
     summary = isUnconfirmed
-      ? addSourceSuffix(showTitle)
-      : addSourceSuffix(`${formattedTime} ${showTitle}`);
+      ? addTitleSuffixes(showTitle)
+      : addTitleSuffixes(`${formattedTime} ${showTitle}`);
   } else if (isCrewOneUnconfirmed) {
-    summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${titledShow(entry.show)}`);
+    summary = addTitleSuffixes(`UNCONFIRMED => ${formattedTime} ${titledShow(entry.show)}`);
   } else {
     const showName = source === "iatse927" ? iatse927EventTitle(entry) : entry.show;
-    summary = addSourceSuffix(`${formattedTime} ${titledShow(showName)}`);
+    summary = addTitleSuffixes(`${formattedTime} ${titledShow(showName)}`);
   }
 
   let description;

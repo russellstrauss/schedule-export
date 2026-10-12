@@ -92,21 +92,21 @@ describe("venue abbreviations", () => {
         },
         { source: "rhino" }
       ).summary
-    ).toBe("7:30am (SFA) JOURNEY (Rhino)");
+    ).toBe("7:30am (SFA) JOURNEY - SH [Rhino]");
 
     expect(
       toGoogleEvent(
         { ...base, show: "JOURNEY", venue: "State Farm Arena" },
         { source: "crewOne" }
       ).summary
-    ).toBe("7:30am (SFA) JOURNEY (Crew 1)");
+    ).toBe("7:30am (SFA) JOURNEY - SH [Crew 1]");
 
     expect(
       toGoogleEvent(
         { ...base, show: "Journey", venue: "State Farm Arena" },
         { source: "iatse927" }
       ).summary
-    ).toBe("7:30am (SFA) Journey (IATSE)");
+    ).toBe("7:30am (SFA) Journey - SH [IATSE]");
 
     expect(
       toGoogleEvent(
@@ -117,6 +117,6 @@ describe("venue abbreviations", () => {
         },
         { source: "rhino" }
       ).summary
-    ).toBe("7:30am (GICC) (C) TECHXCHANGE 2026 (Rhino)");
+    ).toBe("7:30am (GICC) (C) TECHXCHANGE 2026 - SH [Rhino]");
   });
 });
