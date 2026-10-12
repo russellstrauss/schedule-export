@@ -101,9 +101,13 @@ export const toGoogleEvent = (entry, options = {}) => {
   const titledShow = (show) => formatShowWithVenueAbbreviation(show, venueAbbreviation);
 
   if (source === "rhino") {
-    const isCalled = entry.status?.toLowerCase() === "called";
-    const showTitle = isCalled ? `UNCONFIRMED => ${titledShow(entry.show)}` : titledShow(entry.show);
-    summary = isCalled ? addSourceSuffix(showTitle) : addSourceSuffix(`${formattedTime} ${showTitle}`);
+    const isUnconfirmed = ["called", "unconfirmed", "tentative"].includes(
+      String(entry.status || "").trim().toLowerCase()
+    );
+    const showTitle = isUnconfirmed ? `UNCONFIRMED => ${titledShow(entry.show)}` : titledShow(entry.show);
+    summary = isUnconfirmed
+      ? addSourceSuffix(showTitle)
+      : addSourceSuffix(`${formattedTime} ${showTitle}`);
   } else if (isCrewOneUnconfirmed) {
     summary = addSourceSuffix(`UNCONFIRMED => ${formattedTime} ${titledShow(entry.show)}`);
   } else {
