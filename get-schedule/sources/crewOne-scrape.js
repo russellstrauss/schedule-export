@@ -331,8 +331,8 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
   }, headingPattern, allowGlobalFallback);
 }
 
-async function scrapeUpcomingRows(page) {
-  return scrapePortalRows(page, "Upcoming Calls", true);
+async function scrapeUpcomingRows(page, allowGlobalFallback = false) {
+  return scrapePortalRows(page, "Upcoming Calls", allowGlobalFallback);
 }
 
 async function scrapeOfferRows(page) {
@@ -504,11 +504,16 @@ export async function fetchSchedule(page) {
     })
   ).catch(() => {});
 
-  const upcomingRows = (await scrapeUpcomingRows(page)).map((r) => ({ ...r, section: "upcoming" }));
+  // The dashboard omits the Upcoming Calls heading when there are no calls.
+  // Do not scan all dashboard tables in that case: doing so relabels pending
+  // offer rows as accepted upcoming calls.
+  const upcomingRows = (await scrapeUpcomingRows(page, false)).map((r) => ({ ...r, section: "upcoming" }));
   const offerRows = (await scrapeOfferRows(page)).map((r) => ({ ...r, section: "offers" }));
   const rawRows = [];
   const seenRowKeys = new Set();
-  for (const row of [...upcomingRows, ...offerRows]) {
+  // If portal markup causes the same row to be discovered in both sections,
+  // the offer classification is safer and must win over "upcoming".
+  for (const row of [...offerRows, ...upcomingRows]) {
     const key = `${(row.event || "").trim().toLowerCase()}|${(row.dateTime || "").trim().toLowerCase()}|${row.detailUrl || ""}`;
     if (seenRowKeys.has(key)) continue;
     seenRowKeys.add(key);
@@ -525,7 +530,7 @@ export async function fetchSchedule(page) {
       const listUrl = new URL('/view_upcoming', base).toString();
       await gotoPortalPage(page, listUrl);
       await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => {});
-      const altRows = await scrapeUpcomingRows(page);
+      const altRows = await scrapeUpcomingRows(page, true);
       if (altRows && altRows.length > upcomingCount) {
         for (const row of altRows) {
           const tagged = { ...row, section: "upcoming" };

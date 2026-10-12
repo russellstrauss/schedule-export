@@ -290,7 +290,7 @@ describe("crewOne", () => {
     expect(reminder).toBeNull();
   });
 
-  it("fetchSchedule includes pending offers from Offers Needing Your Response", async () => {
+  it("keeps offer rows unconfirmed when the upcoming fallback also finds them", async () => {
     process.env.CREWONE_EMAIL = "a@b.com";
     process.env.CREWONE_PASSWORD = "secret";
 
@@ -320,6 +320,17 @@ describe("crewOne", () => {
         }
         if (src.includes("querySelectorAll('table')") && src.includes("detailLink")) {
           if (/Offers Needing Your Response/i.test(String(args[0] || ""))) {
+            return Promise.resolve([{
+              event: "CHAYANNE 2026",
+              where: "",
+              position: "STAGEHAND",
+              dateTime: "",
+              detailUrl
+            }]);
+          }
+          // Simulate the old dashboard-wide Upcoming Calls fallback finding
+          // the offer table when no Upcoming Calls heading is present.
+          if (args[1] === true) {
             return Promise.resolve([{
               event: "CHAYANNE 2026",
               where: "",
