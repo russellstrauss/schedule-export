@@ -72,7 +72,7 @@ Since `gcloud` CLI is not available on Android, you need to use a service accoun
    
    # IATSE 927 (Gemini AI)
    GEMINI_API_KEY=your-gemini-api-key-from-aistudio
-   GEMINI_MODEL=gemini-2.5-flash
+   GEMINI_MODEL=models/gemini-3.8-flash
    
    # Google Calendar OAuth
    GOOGLE_CLIENT_ID=your-oauth-client-id

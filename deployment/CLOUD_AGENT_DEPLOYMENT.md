@@ -51,7 +51,7 @@ Make sure your Cursor Dashboard has these secrets configured:
 - `CREWONE_PASSWORD` - Crew One portal password
 - `CREWONE_LOGIN_URL` - Crew One portal login URL
 - `GEMINI_API_KEY` - Google AI Studio API key (for IATSE parsing)
-- `GEMINI_MODEL` - Gemini model name (optional, default: gemini-2.5-flash)
+- `GEMINI_MODEL` - Gemini model name (optional, default: models/gemini-3.8-flash)
 
 ### 3. Deploy
 

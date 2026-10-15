@@ -15,7 +15,7 @@ import {
 } from "./utils.js";
 import { enrichIatse927Entries } from "./iatse927-entry-enrichment.js";
 
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "models/gemini-3.8-flash";
 
 const ENTRY_SCHEMA = {
   type: "object",
