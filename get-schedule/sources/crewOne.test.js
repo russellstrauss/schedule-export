@@ -95,7 +95,7 @@ describe("crewOne", () => {
     expect(
       mapCrewOneDashboardRow(
         ["CHAYANNE 2026", "STAGEHAND", "Respond"],
-        ["Event", "Task/Job"],
+        ["Event", "Job/Task"],
         "https://portal.crew1.com/response/xyz"
       )
     ).toEqual({
@@ -119,6 +119,29 @@ describe("crewOne", () => {
     });
 
     expect(isCrewOneActionCell("Respond")).toBe(true);
+  });
+
+  it("includes the Crew One Job/Task position in the event title", () => {
+    const row = mapCrewOneDashboardRow(
+      ["CHAYANNE 2026", "RIGGER (UP)", "Respond"],
+      ["Event", "Job/Task"]
+    );
+
+    const event = toGoogleEvent(
+      {
+        date: "9/18/2026",
+        callTime: "09:00",
+        show: row.event,
+        venue: "State Farm Arena",
+        position: row.position,
+        offerState: "pending"
+      },
+      { source: "crewOne" }
+    );
+
+    expect(event.summary).toBe(
+      "UNCONFIRMED => 8:30am (SFA) CHAYANNE 2026 - RIGGER (UP) [Crew 1]"
+    );
   });
 
   it("parseCrewOneOfferState ignores 'will accept your response' copy", () => {

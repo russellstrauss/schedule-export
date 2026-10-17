@@ -131,7 +131,7 @@ export function isCrewOneActionCell(text) {
 /**
  * Map Crew One dashboard table cells using headers when available.
  * Upcoming: Event | Where | Date/Time | info
- * Offers: Event | Task/Job | Respond
+ * Offers: Event | Job/Task | Respond
  * @param {string[]} cellTexts
  * @param {string[]} headerTexts
  * @param {string | null} detailUrl
@@ -143,7 +143,7 @@ export function mapCrewOneDashboardRow(cellTexts, headerTexts = [], detailUrl = 
 
   const eventIdx = col(/^event$/) >= 0 ? col(/^event$/) : 0;
   const whereIdx = col(/^where$/);
-  const jobIdx = col(/task\/?job|^job$|^position$/);
+  const jobIdx = col(/^(?:job\s*\/\s*task|task\s*\/\s*job|job|task|position)$/);
   const dateIdx = col(/date\/?time|^date$/);
 
   const looksLikeDateTime = (t) => {
