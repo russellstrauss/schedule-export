@@ -147,7 +147,7 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
       const col = (re) => headers.findIndex((h) => re.test(h));
       const eventIdx = col(/^event$/) >= 0 ? col(/^event$/) : 0;
       const whereIdx = col(/^where$/);
-      const jobIdx = col(/task\/?job|^job$|^position$/);
+      const jobIdx = col(/^(?:job\s*\/\s*task|task\s*\/\s*job|job|task|position)$/);
       const dateIdx = col(/date\/?time|^date$/);
 
       let dateTime = dateIdx >= 0 ? cells[dateIdx] || "" : "";
