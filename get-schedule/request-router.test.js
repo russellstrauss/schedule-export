@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   parseRequestBody,
-  isIngestRequest
+  isIngestRequest,
+  isSyncRequest
 } from "./request-router.js";
 
 describe("parseRequestBody", () => {
@@ -39,5 +40,28 @@ describe("isIngestRequest", () => {
         null
       )
     ).toBe(true);
+  });
+});
+
+describe("isSyncRequest", () => {
+  it("does not run a sync for an ordinary browser GET", () => {
+    expect(isSyncRequest({ method: "GET", query: {}, headers: {} }, null)).toBe(false);
+  });
+
+  it("accepts an explicit sync mode", () => {
+    expect(isSyncRequest({ method: "GET", query: { mode: "sync" } }, null)).toBe(true);
+  });
+
+  it("recognizes Cloud Scheduler requests", () => {
+    expect(
+      isSyncRequest(
+        { method: "GET", query: {}, headers: { "user-agent": "Google-Cloud-Scheduler" } },
+        null
+      )
+    ).toBe(true);
+  });
+
+  it("preserves POST as a sync trigger", () => {
+    expect(isSyncRequest({ method: "POST", query: {} }, {})).toBe(true);
   });
 });

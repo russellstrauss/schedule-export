@@ -116,7 +116,7 @@ gcloud functions deploy $FunctionName `
 	--allow-unauthenticated `
 	--memory=1GB `
 	--timeout=600s `
-	--max-instances=1 `
+	--max-instances=2 `
 	--env-vars-file=$envVarsFile
 
 # Clean up temp file

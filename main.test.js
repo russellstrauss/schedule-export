@@ -18,6 +18,7 @@ vi.mock("./get-schedule/ingest-iatse927.js", () => ({
 }));
 
 import { syncSchedule } from "./main.js";
+import getSchedule from "./get-schedule/get-schedule.js";
 import { storeIatse927Message } from "./get-schedule/ingest-iatse927.js";
 
 function createResponse() {
@@ -51,5 +52,38 @@ describe("syncSchedule IATSE ingest", () => {
     expect(response.json).toHaveBeenCalledWith(
       expect.objectContaining({ success: true, stored: true })
     );
+  });
+});
+
+describe("syncSchedule HTTP routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns immediately when the endpoint is opened in a browser", async () => {
+    const response = createResponse();
+
+    await syncSchedule(
+      { method: "GET", path: "/", query: {}, headers: { "user-agent": "Mozilla/5.0" } },
+      response
+    );
+
+    expect(getSchedule).not.toHaveBeenCalled();
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true, status: "ready" })
+    );
+  });
+
+  it("runs synchronization for an explicit sync request", async () => {
+    const response = createResponse();
+
+    await syncSchedule(
+      { method: "GET", path: "/", query: { mode: "sync" }, headers: {} },
+      response
+    );
+
+    expect(getSchedule).toHaveBeenCalledOnce();
+    expect(response.status).toHaveBeenCalledWith(200);
   });
 });

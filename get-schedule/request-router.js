@@ -35,4 +35,20 @@ export function isIngestRequest(req, body) {
   return body?.mode === "ingest" && body?.source === INGEST_SOURCE;
 }
 
+/**
+ * Keep browser GETs cheap while preserving Cloud Scheduler and explicit sync
+ * requests. Cloud Scheduler sends this User-Agent by default.
+ *
+ * @param {import("@google-cloud/functions-framework").Request} req
+ * @param {Record<string, unknown> | null} body
+ */
+export function isSyncRequest(req, body) {
+  const mode = req.query?.mode ?? body?.mode;
+  if (String(mode || "").toLowerCase() === "sync") return true;
+  if (String(req.method || "").toUpperCase() === "POST") return true;
+
+  const userAgent = req.get?.("user-agent") ?? req.headers?.["user-agent"] ?? "";
+  return String(userAgent).toLowerCase().includes("google-cloud-scheduler");
+}
+
 export { INGEST_SOURCE };

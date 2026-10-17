@@ -1,7 +1,8 @@
 import getSchedule from "./get-schedule/get-schedule.js";
 import {
   parseRequestBody,
-  isIngestRequest
+  isIngestRequest,
+  isSyncRequest
 } from "./get-schedule/request-router.js";
 import { isCloudRuntime } from "./get-schedule/runtime-env.js";
 import { exchangeOAuthCode } from "./get-schedule/google-calendar/auth.js";
@@ -126,6 +127,20 @@ export async function syncSchedule(req, res) {
         timestamp: new Date().toISOString()
       });
     }
+    return;
+  }
+
+  // Opening the public URL is a health check, not a request to run a
+  // potentially ten-minute browser/AI sync. Cloud Scheduler, POST requests,
+  // and ?mode=sync continue to trigger synchronization.
+  if (!isSyncRequest(req, body)) {
+    res.set("Cache-Control", "no-store");
+    res.status(200).json({
+      success: true,
+      status: "ready",
+      message: "Schedule sync endpoint is available",
+      timestamp: new Date().toISOString()
+    });
     return;
   }
 

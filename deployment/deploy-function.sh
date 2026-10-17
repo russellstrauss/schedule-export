@@ -105,7 +105,7 @@ gcloud functions deploy $FUNCTION_NAME \
   --allow-unauthenticated \
   --memory=1GB \
   --timeout=600s \
-  --max-instances=1 \
+  --max-instances=2 \
   --set-env-vars="$ENV_VARS"
 
 if [ $? -eq 0 ]; then
