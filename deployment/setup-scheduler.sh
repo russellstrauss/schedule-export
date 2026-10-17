@@ -52,7 +52,7 @@ echo "🔗 Function URL: $FUNCTION_URL"
 gcloud scheduler jobs create http $SCHEDULER_JOB_NAME \
   --location=$REGION \
   --schedule="0 0 * * *" \
-  --uri="$FUNCTION_URL" \
+  --uri="${FUNCTION_URL}?mode=sync" \
   --http-method=GET \
   --time-zone="$TIMEZONE" \
   --description="Run schedule sync at midnight daily" \

@@ -177,7 +177,7 @@ gcloud functions deploy sync-schedule \
   --allow-unauthenticated \
   --memory=1GB \
   --timeout=600s \
-  --max-instances=1 \
+  --max-instances=2 \
   --set-env-vars="RHINO_EMAIL=your-email@example.com,RHINO_PASSWORD=your-password"
 ```
 

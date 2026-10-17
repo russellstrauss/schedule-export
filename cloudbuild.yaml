@@ -18,7 +18,9 @@ steps:
       - --allow-unauthenticated
       - --memory=1GB
       - --timeout=600s
-      - --max-instances=1
+      # Keep one spare instance available for fast health responses while a
+      # long-running scheduled sync occupies the other instance.
+      - --max-instances=2
 timeout: 1200s
 options:
   logging: CLOUD_LOGGING_ONLY

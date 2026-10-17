@@ -93,7 +93,7 @@ Write-Host "Function URL: $FunctionUrl" -ForegroundColor Green
 gcloud scheduler jobs create http $SchedulerJobName `
     --location=$Region `
     --schedule="0 0 * * *" `
-    --uri="$FunctionUrl" `
+    --uri="$($FunctionUrl)?mode=sync" `
     --http-method=GET `
     --time-zone="$Timezone" `
     --description="Run schedule sync at midnight daily" `
