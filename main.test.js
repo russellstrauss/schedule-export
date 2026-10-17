@@ -60,11 +60,11 @@ describe("syncSchedule HTTP routing", () => {
     vi.clearAllMocks();
   });
 
-  it("returns immediately when the endpoint is opened in a browser", async () => {
+  it("returns immediately for an explicit health check", async () => {
     const response = createResponse();
 
     await syncSchedule(
-      { method: "GET", path: "/", query: {}, headers: { "user-agent": "Mozilla/5.0" } },
+      { method: "GET", path: "/", query: { mode: "health" }, headers: {} },
       response
     );
 
@@ -75,11 +75,11 @@ describe("syncSchedule HTTP routing", () => {
     );
   });
 
-  it("runs synchronization for an explicit sync request", async () => {
+  it("runs synchronization when the endpoint is opened", async () => {
     const response = createResponse();
 
     await syncSchedule(
-      { method: "GET", path: "/", query: { mode: "sync" }, headers: {} },
+      { method: "GET", path: "/", query: {}, headers: { "user-agent": "Mozilla/5.0" } },
       response
     );
 

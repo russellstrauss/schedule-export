@@ -130,9 +130,8 @@ export async function syncSchedule(req, res) {
     return;
   }
 
-  // Opening the public URL is a health check, not a request to run a
-  // potentially ten-minute browser/AI sync. Cloud Scheduler, POST requests,
-  // and ?mode=sync continue to trigger synchronization.
+  // Health checks are opt-in so opening the established endpoint continues to
+  // run synchronization. Use ?mode=health when only availability is needed.
   if (!isSyncRequest(req, body)) {
     res.set("Cache-Control", "no-store");
     res.status(200).json({

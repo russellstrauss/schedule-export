@@ -44,12 +44,13 @@ describe("isIngestRequest", () => {
 });
 
 describe("isSyncRequest", () => {
-  it("does not run a sync for an ordinary browser GET", () => {
-    expect(isSyncRequest({ method: "GET", query: {}, headers: {} }, null)).toBe(false);
+  it("runs a sync for an ordinary browser GET", () => {
+    expect(isSyncRequest({ method: "GET", query: {}, headers: {} }, null)).toBe(true);
   });
 
-  it("accepts an explicit sync mode", () => {
-    expect(isSyncRequest({ method: "GET", query: { mode: "sync" } }, null)).toBe(true);
+  it("does not sync in explicit health mode", () => {
+    expect(isSyncRequest({ method: "GET", query: { mode: "health" } }, null)).toBe(false);
+    expect(isSyncRequest({ method: "GET", query: { mode: "status" } }, null)).toBe(false);
   });
 
   it("recognizes Cloud Scheduler requests", () => {
