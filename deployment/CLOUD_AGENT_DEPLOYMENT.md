@@ -47,7 +47,7 @@ Make sure your Cursor Dashboard has these secrets configured:
 
 **Optional (for additional features):**
 
-Which companies sync is set in `user-settings.json` (`true` or `false` for `rhino`, `crewOne`, and `technicalElements`). Portal login pages are fixed in the source.
+Which companies sync is set in `user-settings.json` (`true` or `false` for `rhino`, `crewOne`, `technicalElements`, and `iatse927`). Portal login pages are fixed in the source.
 
 - `CREWONE_EMAIL` - Crew One portal email
 - `CREWONE_PASSWORD` - Crew One portal password

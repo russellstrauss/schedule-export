@@ -55,6 +55,7 @@ vi.mock("./auth-handler.js", () => ({
 }));
 
 import { storeIatse927Message, trySyncIatse927FromStore, syncIatse927FromMessages } from "./ingest-iatse927.js";
+import * as userSettings from "./user-settings.js";
 import {
   purgeOrphanedSourceEvents,
   consolidateDuplicateSourceEvents,
@@ -97,6 +98,14 @@ describe("trySyncIatse927FromStore", () => {
   afterEach(() => {
     if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = originalKey;
+  });
+
+  it("returns null when iatse927 is turned off", async () => {
+    const spy = vi.spyOn(userSettings, "isSourceEnabled").mockReturnValue(false);
+    const result = await trySyncIatse927FromStore();
+    expect(result).toBeNull();
+    expect(loadAllMessages).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("returns null when GEMINI_API_KEY is missing", async () => {

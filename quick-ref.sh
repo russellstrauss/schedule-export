@@ -182,7 +182,8 @@ cat << 'EOF'
   ✓ No browser automation issues
   ✓ Just IATSE + Firestore + Google Calendar
 
-  Set rhino, crewOne, and technicalElements to false in user-settings.json
+  Set rhino, crewOne, and technicalElements to false in user-settings.json.
+  Leave iatse927 true.
 
 
 ═══════════════════════════════════════════════════════════════════

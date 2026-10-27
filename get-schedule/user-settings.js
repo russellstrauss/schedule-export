@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Companies the user can turn on or off. IATSE 927 SMS ingest is separate. */
+/** Companies the user can turn on or off. */
 export const SYNC_COMPANIES = [
   { id: "rhino", label: "Rhino" },
   { id: "crewOne", label: "Crew One" },
-  { id: "technicalElements", label: "Technical Elements" }
+  { id: "technicalElements", label: "Technical Elements" },
+  { id: "iatse927", label: "IATSE" }
 ];
 
 const SETTINGS_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "user-settings.json");
@@ -50,4 +51,12 @@ export function loadUserSettings(path = SETTINGS_PATH) {
 /** @returns {string[]} */
 export function getEnabledSourceIds() {
   return enabledSourceIds(loadUserSettings());
+}
+
+/**
+ * @param {string} sourceId
+ * @param {string[]} [enabledIds]
+ */
+export function isSourceEnabled(sourceId, enabledIds = getEnabledSourceIds()) {
+  return enabledIds.includes(sourceId);
 }

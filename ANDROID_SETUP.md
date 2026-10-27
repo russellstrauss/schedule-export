@@ -184,7 +184,7 @@ GOOGLE_TOKEN='{"access_token":"...","refresh_token":"...","token_type":"Bearer",
 
 ### Optional (for Portal Sources)
 
-Turn a company on or off in `user-settings.json` (`rhino`, `crewOne`, `technicalElements`). Login pages are fixed in the source. A company set to `true` still needs its email and password.
+Turn a company on or off in `user-settings.json` (`rhino`, `crewOne`, `technicalElements`, `iatse927`). Login pages are fixed in the source. A portal company set to `true` still needs its email and password. IATSE stays on while `iatse927` is `true` and still needs `GEMINI_API_KEY` and Firestore.
 
 ```bash
 # System Chromium

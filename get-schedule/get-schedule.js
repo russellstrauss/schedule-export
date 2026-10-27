@@ -156,21 +156,25 @@ export default async function getSchedule() {
   }
 
   let iatseResult = null;
-  try {
-    iatseResult = await trySyncIatse927FromStore();
-  } catch (err) {
-    if (isFirestoreCredentialsError(err)) {
-      console.warn(
-        `⚠️  Skipping iatse927: Firestore credentials not available (${err instanceof Error ? err.message : err})`
-      );
-    } else {
-      throw err;
+  if (!enabledIds.includes("iatse927")) {
+    console.log("ℹ️  iatse927 is turned off in user-settings.json; skipping calendar sync.");
+  } else {
+    try {
+      iatseResult = await trySyncIatse927FromStore();
+    } catch (err) {
+      if (isFirestoreCredentialsError(err)) {
+        console.warn(
+          `⚠️  Skipping iatse927: Firestore credentials not available (${err instanceof Error ? err.message : err})`
+        );
+      } else {
+        throw err;
+      }
     }
   }
 
   if (portalSourcesRan === 0 && !iatseResult) {
     throw new Error(
-      "No schedule sources ran. Turn a company on in user-settings.json and set its portal credentials, and/or configure IATSE (GEMINI_API_KEY + Firestore messages)."
+      "No schedule sources ran. Turn a company on in user-settings.json and configure its credentials."
     );
   }
 }

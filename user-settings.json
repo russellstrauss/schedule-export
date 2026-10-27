@@ -1,5 +1,6 @@
 {
   "rhino": true,
   "crewOne": true,
-  "technicalElements": false
+  "technicalElements": true,
+  "iatse927": true
 }

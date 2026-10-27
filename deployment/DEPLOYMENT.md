@@ -89,9 +89,9 @@ export RHINO_PASSWORD="your-password"
 
 ## Step 4b: Portal companies
 
-Which companies sync is set in [`user-settings.json`](../user-settings.json). Each of `rhino`, `crewOne`, and `technicalElements` is `true` or `false`. The same file is used locally and by the deployed function. Portal login pages are fixed in the source.
+Which companies sync is set in [`user-settings.json`](../user-settings.json). Each of `rhino`, `crewOne`, `technicalElements`, and `iatse927` is `true` or `false`. The same file is used locally and by the deployed function. Portal login pages are fixed in the source.
 
-Rhino and Crew One start on. Technical Elements stays off until you set `technicalElements` to `true`.
+Rhino, Crew One, and IATSE start on. Technical Elements stays off until you set `technicalElements` to `true`.
 
 Set only the email and password for each company you turn on:
 
@@ -111,7 +111,7 @@ export TECHNICAL_ELEMENTS_EMAIL="your-email@example.com"
 export TECHNICAL_ELEMENTS_PASSWORD="your-password"
 ```
 
-A company set to `true` without credentials is skipped. IATSE 927 SMS ingest does not use these flags.
+A company set to `true` without credentials is skipped. With `iatse927` set to `false`, incoming SMS messages are still stored and the calendar sync waits until the flag is turned back on.
 
 Technical Elements staffs calls through the LiveForce crew app (`https://app.liveforce.co/my-calendar/upcoming`). Calendar events are labeled **Technical Elements**. Approved shifts are confirmed events. Invitations, applications, and reserve-list rows still on the upcoming calendar are added as unconfirmed. Cancelled and declined shifts are removed from the future calendar. Past Technical Elements events stay on the calendar.
 
