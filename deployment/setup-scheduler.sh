@@ -25,6 +25,7 @@ fi
 
 PROJECT_ID=${1:-$(gcloud config get-value project 2>/dev/null)}
 REGION=${2:-us-central1}
+# Midnight sync stays on production. The develop function is invoked manually.
 FUNCTION_NAME="sync-schedule"
 SCHEDULER_JOB_NAME="sync-schedule-midnight"
 TIMEZONE=${3:-America/New_York}

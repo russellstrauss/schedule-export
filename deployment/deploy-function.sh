@@ -27,8 +27,13 @@ fi
 
 PROJECT_ID=${1:-$(gcloud config get-value project 2>/dev/null)}
 REGION=${2:-us-central1}
-FUNCTION_NAME="sync-schedule"
 SKIP_TOKEN_CHECK=${3:-false}
+# Honor an explicit FUNCTION_NAME. Otherwise follow the checked-out branch
+# so a develop checkout publishes the testing function, not production.
+if [ -z "${FUNCTION_NAME:-}" ]; then
+    GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    FUNCTION_NAME="$(bash "$SCRIPT_DIR/deploy-target.sh" "$GIT_BRANCH")"
+fi
 
 echo "🚀 Deploying Cloud Function: $FUNCTION_NAME"
 echo "📦 Project: $PROJECT_ID"
@@ -127,9 +132,23 @@ if [ $? -eq 0 ]; then
     fi
     
     echo ""
+    FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \
+      --gen2 \
+      --region="$REGION" \
+      --format="value(serviceConfig.uri)" 2>/dev/null || true)
+    if [ -n "$FUNCTION_URL" ]; then
+        echo "🔗 Function URL: $FUNCTION_URL"
+    fi
+    echo ""
     echo "📝 Next steps:"
-    echo "1. Run ./setup-scheduler.sh to create the Cloud Scheduler job"
-    echo "2. The function URL will be displayed above"
+    if [ "$FUNCTION_NAME" = "sync-schedule" ]; then
+        echo "1. Run ./setup-scheduler.sh to create the Cloud Scheduler job"
+        echo "2. Open the function URL above to run a sync"
+    else
+        echo "1. Health check (does not sync): ${FUNCTION_URL}?mode=health"
+        echo "2. A request without mode=health runs a real calendar sync"
+        echo "3. Develop is not on the midnight schedule"
+    fi
 else
     echo ""
     echo "❌ Deployment failed!"

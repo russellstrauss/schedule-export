@@ -183,6 +183,41 @@ gcloud functions deploy sync-schedule \
 
 Puppeteer in Cloud Functions uses `@sparticuz/chromium` (see `get-schedule/puppeteer.js`). Deploy with at least 1GB memory; multi-source syncs use a 600s timeout.
 
+## Develop testing URL
+
+`main` deploys Cloud Function `sync-schedule` (the existing production URL). `develop` deploys `sync-schedule-develop`, which gets its own URL. Cloud Build reads the branch name in `cloudbuild.yaml` and leaves the other function alone.
+
+The develop function is not on the midnight scheduler. The first Cloud Build of `develop` copies plain environment variables and Secret Manager bindings from `sync-schedule`. Later deploys of that function leave its environment in place.
+
+A request to the develop URL runs a real sync against the same calendar as production. Check a deploy without syncing:
+
+```bash
+curl "<DEVELOP_FUNCTION_URL>?mode=health"
+```
+
+Create the Cloud Build trigger once, from a machine that can list the existing main trigger:
+
+```bash
+chmod +x deployment/setup-develop-trigger.sh
+./deployment/setup-develop-trigger.sh
+```
+
+The script copies the main trigger and sets the branch filter to `^develop$`. If the current trigger already includes `develop`, it does nothing. If the trigger lives in another project, duplicate it there and keep `cloudbuild.yaml` as the build config.
+
+After the first successful develop build, print the testing URL:
+
+```bash
+gcloud functions describe sync-schedule-develop --gen2 --region=us-central1 --format="value(serviceConfig.uri)"
+```
+
+A local `./deployment/deploy-function.sh` from a `develop` checkout deploys `sync-schedule-develop`. `./deployment/setup-scheduler.sh` still targets production.
+
+A manual `gcloud builds submit` does not set the branch. Pass it explicitly when submitting the develop checkout:
+
+```bash
+gcloud builds submit --config=cloudbuild.yaml --substitutions=BRANCH_NAME=develop
+```
+
 ## Step 6: Set Up Cloud Scheduler
 
 **Windows (PowerShell):**

@@ -1,26 +1,16 @@
-# Deploys the nightly sync function. The trigger may run in another project;
-# the function itself lives in rhino-schedule-sync. Existing environment
-# variables on the function are left in place.
+# Deploys the nightly sync function. The trigger may run in another project.
+# The function project is the second script argument. Existing environment
+# variables on an existing function are left in place.
+#
+# Branch develop deploys sync-schedule-develop, a separate testing URL.
+# Every other branch, including main, deploys sync-schedule.
 steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - functions
-      - deploy
-      - sync-schedule
-      - --project=rhino-schedule-sync
-      - --gen2
-      - --runtime=nodejs24
-      - --region=us-central1
-      - --source=.
-      - --entry-point=syncSchedule
-      - --trigger-http
-      - --allow-unauthenticated
-      - --memory=1GB
-      - --timeout=600s
-      # Keep one spare instance available for fast health responses while a
-      # long-running scheduled sync occupies the other instance.
-      - --max-instances=2
+      - deployment/cloud-build-deploy.sh
+      - rhino-schedule-sync # // pragma: allowlist secret
+      - us-central1
 timeout: 1200s
 options:
   logging: CLOUD_LOGGING_ONLY

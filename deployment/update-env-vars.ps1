@@ -7,6 +7,16 @@ param(
     [string]$FunctionName = "sync-schedule"
 )
 
+if (-not $PSBoundParameters.ContainsKey('FunctionName')) {
+    try {
+        $branch = (& git rev-parse --abbrev-ref HEAD 2>$null)
+        if ($branch -eq 'develop') {
+            $FunctionName = 'sync-schedule-develop'
+        }
+    } catch {
+    }
+}
+
 Write-Host "Updating environment variables for: $FunctionName" -ForegroundColor Cyan
 Write-Host "Region: $Region" -ForegroundColor Cyan
 Write-Host ""

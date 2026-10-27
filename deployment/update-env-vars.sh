@@ -24,7 +24,10 @@ if [ -d "/tmp/google-cloud-sdk/bin" ]; then
 fi
 
 REGION=${1:-us-central1}
-FUNCTION_NAME="sync-schedule"
+if [ -z "${FUNCTION_NAME:-}" ]; then
+    GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    FUNCTION_NAME="$(bash "$SCRIPT_DIR/deploy-target.sh" "$GIT_BRANCH")"
+fi
 
 echo "Updating environment variables for: $FUNCTION_NAME"
 echo "Region: $REGION"

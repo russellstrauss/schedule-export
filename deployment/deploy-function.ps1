@@ -10,6 +10,17 @@ param(
 	[switch]$SkipTokenCheck = $false
 )
 
+# A develop checkout publishes the testing function unless -FunctionName was set.
+if (-not $PSBoundParameters.ContainsKey('FunctionName')) {
+	try {
+		$branch = (& git rev-parse --abbrev-ref HEAD 2>$null)
+		if ($branch -eq 'develop') {
+			$FunctionName = 'sync-schedule-develop'
+		}
+	} catch {
+	}
+}
+
 Write-Host "Deploying Cloud Function: $FunctionName" -ForegroundColor Cyan
 Write-Host "Project: $ProjectId" -ForegroundColor Cyan
 Write-Host "Region: $Region" -ForegroundColor Cyan
@@ -140,10 +151,21 @@ if ($LASTEXITCODE -eq 0) {
 		}
 	}
     
+	$functionUrl = gcloud functions describe $FunctionName --gen2 --region=$Region --format="value(serviceConfig.uri)" 2>$null
+	Write-Host ""
+	if ($functionUrl) {
+		Write-Host "Function URL: $functionUrl" -ForegroundColor Cyan
+	}
 	Write-Host ""
 	Write-Host "Next steps:" -ForegroundColor Yellow
-	Write-Host "1. Run .\setup-scheduler.ps1 to create the Cloud Scheduler job"
-	Write-Host "2. The function URL will be displayed above"
+	if ($FunctionName -eq 'sync-schedule') {
+		Write-Host "1. Run .\setup-scheduler.ps1 to create the Cloud Scheduler job"
+		Write-Host "2. Open the function URL above to run a sync"
+	} else {
+		Write-Host "1. Health check (does not sync): ${functionUrl}?mode=health"
+		Write-Host "2. A request without mode=health runs a real calendar sync"
+		Write-Host "3. Develop is not on the midnight schedule"
+	}
 }
 else {
 	Write-Host ""
