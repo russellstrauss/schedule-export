@@ -1,10 +1,16 @@
 # Deploys the nightly sync function. The trigger may run in another project.
-# The function project is the second script argument. Existing environment
+# The function project is passed to the deploy script. Existing environment
 # variables on an existing function are left in place.
 #
 # Branch develop deploys sync-schedule-develop, a separate testing URL.
 # Every other branch, including main, deploys sync-schedule.
+# The first step makes sure pushes to develop start that deploy.
 steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - ENSURE_TRIGGER_OPTIONAL=1 bash deployment/setup-develop-trigger.sh
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:

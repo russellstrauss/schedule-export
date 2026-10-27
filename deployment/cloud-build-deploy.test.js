@@ -107,11 +107,13 @@ function runDeploy(branch, capture, extraEnv = {}) {
 describe("cloudbuild config", () => {
   it("passes the function project into the deploy script", () => {
     const yaml = fs.readFileSync(path.join(root, "cloudbuild.yaml"), "utf8");
+    expect(yaml).toContain("deployment/setup-develop-trigger.sh");
     const match = yaml.match(/cloud-build-deploy\.sh\s*\n\s*-\s+(\S+)[^\n]*\n\s*-\s+(\S+)/);
     expect(match).not.toBeNull();
     expect(match[1]).not.toBe("us-central1");
     expect(match[1].length).toBeGreaterThan(0);
     expect(match[2]).toBe("us-central1");
+    expect(yaml.indexOf("setup-develop-trigger.sh")).toBeLessThan(yaml.indexOf("cloud-build-deploy.sh"));
   });
 });
 

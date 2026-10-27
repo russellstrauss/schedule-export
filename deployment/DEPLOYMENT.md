@@ -187,6 +187,8 @@ Puppeteer in Cloud Functions uses `@sparticuz/chromium` (see `get-schedule/puppe
 
 `main` deploys Cloud Function `sync-schedule` (the existing production URL). `develop` deploys `sync-schedule-develop`, which gets its own URL. Cloud Build reads the branch name in `cloudbuild.yaml` and leaves the other function alone.
 
+Pushes to `main` are built by trigger `push-production-schedule-sync`. Pushes to `develop` are built by trigger `push-develop-schedule-sync`. Both triggers are in project `gen-lang-client-0523900922`, region `northamerica-northeast2`. The function itself stays in the project named by `cloudbuild.yaml`.
+
 The develop function is not on the midnight scheduler. The first Cloud Build of `develop` copies plain environment variables and Secret Manager bindings from `sync-schedule`. Later deploys of that function leave its environment in place.
 
 A request to the develop URL runs a real sync against the same calendar as production. Check a deploy without syncing:
@@ -195,14 +197,14 @@ A request to the develop URL runs a real sync against the same calendar as produ
 curl "<DEVELOP_FUNCTION_URL>?mode=health"
 ```
 
-Create the Cloud Build trigger once, from a machine that can list the existing main trigger:
+Create the develop trigger once, with an account that can view `push-production-schedule-sync`:
 
 ```bash
 chmod +x deployment/setup-develop-trigger.sh
 ./deployment/setup-develop-trigger.sh
 ```
 
-The script copies the main trigger and sets the branch filter to `^develop$`. If the current trigger already includes `develop`, it does nothing. If the trigger lives in another project, duplicate it there and keep `cloudbuild.yaml` as the build config.
+The script copies that trigger, names the copy `push-develop-schedule-sync`, and sets the branch filter to `^develop$`. Every later push to `develop` deploys. The script also starts one build of the current `develop` commit. Each Cloud Build tries the same setup and continues the function deploy if this account cannot manage triggers.
 
 After the first successful develop build, print the testing URL:
 

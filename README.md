@@ -44,4 +44,4 @@ See [tests/TESTING.md](tests/TESTING.md) and [tests/README.md](tests/README.md).
 
 Node 24 Cloud Function + Cloud Scheduler. Scripts live in `deployment/`. See [deployment/DEPLOYMENT.md](deployment/DEPLOYMENT.md).
 
-Pushes to `main` update the production function `sync-schedule`. Pushes to `develop` update `sync-schedule-develop`, a separate URL for testing. That URL is not on the midnight schedule. A request without `?mode=health` still runs a real calendar sync.
+Pushes to `main` update the production function `sync-schedule`. Pushes to `develop` are built by Cloud Build trigger `push-develop-schedule-sync` and update `sync-schedule-develop`, a separate URL for testing. That URL is not on the midnight schedule. A request without `?mode=health` still runs a real calendar sync.
