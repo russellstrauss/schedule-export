@@ -501,6 +501,102 @@ describe('toGoogleEvent', () => {
     expect(result.end).toMatch(/^2025-11-23T05:30:00$/);
   });
 
+  it('ends a call that runs past midnight at 11:59pm on the schedule date', () => {
+    const entry = {
+      date: '11/23/2025',
+      callTime: '20:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry);
+    expect(result.start).toBe('2025-11-23T19:30:00');
+    expect(result.end).toBe('2025-11-23T23:59:00');
+  });
+
+  it('ends a call that lands exactly at midnight at 11:59pm', () => {
+    const entry = {
+      date: '11/23/2025',
+      callTime: '19:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry);
+    expect(result.start).toBe('2025-11-23T18:30:00');
+    expect(result.end).toBe('2025-11-23T23:59:00');
+  });
+
+  it('keeps an end that is still before midnight', () => {
+    const entry = {
+      date: '11/23/2025',
+      callTime: '18:00',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry);
+    expect(result.end).toBe('2025-11-23T23:00:00');
+  });
+
+  it('caps a late call on the last day of the year', () => {
+    const entry = {
+      date: '12/31/2025',
+      callTime: '22:30',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry);
+    expect(result.start).toBe('2025-12-31T22:00:00');
+    expect(result.end).toBe('2025-12-31T23:59:00');
+  });
+
+  it('keeps an after-midnight call on its schedule date', () => {
+    const entry = {
+      date: '11/23/2025',
+      callTime: '00:15',
+      show: 'Test Show',
+      venue: 'Test Venue',
+      location: '',
+      position: 'SH',
+      type: 'IN',
+      status: 'Confirmed',
+      details: '',
+      notes: ''
+    };
+
+    const result = toGoogleEvent(entry);
+    // 30 minutes before 12:15am is the previous evening, but the call itself
+    // belongs on 11/23 and ends five hours later, still that morning.
+    expect(result.start).toBe('2025-11-22T23:45:00');
+    expect(result.end).toBe('2025-11-23T05:15:00');
+  });
+
   it('should combine venue and location correctly', () => {
     const entry = {
       date: '11/23/2025',

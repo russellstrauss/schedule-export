@@ -21,6 +21,21 @@ import {
 } from "./schedule-time.js";
 
 /**
+ * If a computed end falls on a later calendar day than the call, pin it to
+ * 11:59pm on the call's date so the event stays off the next day's list.
+ * @param {{ year: number, month: number, day: number, hours: number, minutes: number }} endParts
+ * @param {number} year
+ * @param {number} month
+ * @param {number} day
+ */
+function capEndOnScheduleDay(endParts, year, month, day) {
+  const endKey = endParts.year * 10000 + endParts.month * 100 + endParts.day;
+  const scheduleKey = year * 10000 + month * 100 + day;
+  if (endKey <= scheduleKey) return endParts;
+  return { year, month, day, hours: 23, minutes: 59 };
+}
+
+/**
  * Get the display name for a source
  * @param {string} source
  * @returns {string}
@@ -61,14 +76,14 @@ export const toGoogleEvent = (entry, options = {}) => {
     -30,
     timezone
   );
-  const endParts = addMinutesToZonedLocalTime(
+  // Calls run five hours. Google Calendar lists an event on every day it
+  // overlaps, so an end after midnight also appears on the next day. Stop
+  // those at 11:59pm on the schedule date.
+  const endParts = capEndOnScheduleDay(
+    addMinutesToZonedLocalTime(year, month, day, hours, minutes, 5 * 60, timezone),
     year,
     month,
-    day,
-    hours,
-    minutes,
-    5 * 60,
-    timezone
+    day
   );
 
   const startStr = formatDateTimeForTimezone(
