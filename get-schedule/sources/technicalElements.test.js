@@ -11,6 +11,7 @@ import {
   mapTechnicalElementsRole,
   sourceDisplayName,
   sourceId,
+  UPCOMING_MAX_PAGES,
   zonedPartsFromIso
 } from "./technicalElements.js";
 
@@ -219,6 +220,88 @@ describe("technical elements upcoming pages", () => {
 
     expect(queries.map((query) => query.offset)).toEqual([null, "2026-06-16"]);
     expect(roles.map((item) => item.crewJobId)).toEqual([1, 2, 3]);
+  });
+
+  it("follows the newest day when the page is not in date order", async () => {
+    const queries = [];
+    const roles = await collectUpcomingRoles(
+      async (query) => {
+        queries.push(query.offset);
+        if (!query.offset) {
+          return {
+            ok: true,
+            body: {
+              data: {
+                totalJobs: 4,
+                dates: [
+                  { date: "2026-06-03", roles: [role({ crewJobId: 3, id: 58 })] },
+                  { date: "2026-06-02", roles: [role({ crewJobId: 2, id: 56 })] },
+                  { date: "2026-06-01", roles: [role({ crewJobId: 1, id: 55 })] }
+                ]
+              }
+            }
+          };
+        }
+        return {
+          ok: true,
+          body: {
+            data: {
+              totalJobs: 4,
+              dates: [{ date: "2026-06-04", roles: [role({ crewJobId: 4, id: 59 })] }]
+            }
+          }
+        };
+      },
+      { perPage: 3, maxPages: 4 }
+    );
+
+    expect(queries).toEqual([null, "2026-06-03"]);
+    expect(roles.map((item) => item.crewJobId)).toEqual([3, 2, 1, 4]);
+  });
+
+  it("finishes a newest-first calendar that would stall on the oldest day", async () => {
+    const queries = [];
+    const roles = await collectUpcomingRoles(
+      async (query) => {
+        queries.push(query.offset);
+        const windows = {
+          null: ["2026-06-04", "2026-06-03", "2026-06-02", "2026-06-01"],
+          "2026-06-04": ["2026-06-08", "2026-06-07", "2026-06-06", "2026-06-05"],
+          "2026-06-08": ["2026-06-10", "2026-06-09"]
+        };
+        const days = windows[query.offset] || [];
+        return {
+          ok: true,
+          body: {
+            data: {
+              dates: days.map((date) => ({
+                date,
+                roles: [role({ crewJobId: date, id: date, startDate: `${date}T14:00:00.000Z` })]
+              }))
+            }
+          }
+        };
+      },
+      { perPage: 4, maxPages: 3 }
+    );
+
+    expect(queries).toEqual([null, "2026-06-04", "2026-06-08"]);
+    expect(roles.map((item) => item.crewJobId)).toEqual([
+      "2026-06-04",
+      "2026-06-03",
+      "2026-06-02",
+      "2026-06-01",
+      "2026-06-08",
+      "2026-06-07",
+      "2026-06-06",
+      "2026-06-05",
+      "2026-06-10",
+      "2026-06-09"
+    ]);
+  });
+
+  it("covers a multi-year day list before treating the snapshot as incomplete", () => {
+    expect(UPCOMING_MAX_PAGES).toBeGreaterThanOrEqual(40);
   });
 
   it("stops when a page is shorter than the requested day count", async () => {

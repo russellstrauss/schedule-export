@@ -9,6 +9,7 @@ export {
   classifyTechnicalElementsOffer,
   mapTechnicalElementsRole,
   collectUpcomingRoles,
+  UPCOMING_MAX_PAGES,
   zonedPartsFromIso
 } from "./technicalElements-parse.js";
 export { fetchSchedule } from "./technicalElements-scrape.js";
