@@ -13,7 +13,10 @@ export const DEFAULT_APP_ORIGIN = "https://app.liveforce.co";
 export const DEFAULT_TIMEZONE = "America/New_York";
 
 export const UPCOMING_PAGE_SIZE = 40;
-export const UPCOMING_MAX_PAGES = 12;
+// Day rows, not shifts. The next request starts on the newest day already
+// loaded, so each full page adds about one page of new days. Forty pages
+// covers a multi-year calendar; a shorter cap aborted real upcoming lists.
+export const UPCOMING_MAX_PAGES = 40;
 
 /** @returns {string[]} */
 export function missingCredentialEnvVars() {
@@ -163,6 +166,25 @@ function failureDetail(body) {
 }
 
 /**
+ * The LiveForce client sorts day rows and sends the newest day as `offset`.
+ * The raw `dates` array is not ordered, so the last element can be the oldest
+ * day in the window. Following that day only advances the cursor by one day
+ * while every page stays full.
+ * @param {any[]} dates
+ * @returns {string | null}
+ */
+function newestDayYmd(dates) {
+  /** @type {string | null} */
+  let newest = null;
+  for (const day of dates) {
+    const ymd = toYmd(day?.date);
+    if (!ymd) continue;
+    if (newest === null || ymd > newest) newest = ymd;
+  }
+  return newest;
+}
+
+/**
  * Walk upcoming pages until the last day page.
  * `fetchPage` returns `{ ok, status, body }`.
  * @param {(query: { offset: string | null; perPage: number }) => Promise<{ ok?: boolean; status?: number; body?: any }>} fetchPage
@@ -211,15 +233,17 @@ export async function collectUpcomingRoles(fetchPage, options = {}) {
 
     if (dates.length < perPage) return roles;
 
-    const nextOffset = toYmd(dates[dates.length - 1]?.date);
-    if (!nextOffset || nextOffset === offset) {
+    const nextOffset = newestDayYmd(dates);
+    if (!nextOffset || (offset !== null && nextOffset <= offset)) {
       if (added === 0) return roles;
       throw new Error("Technical Elements calendar page did not include a date to load the next page.");
     }
     offset = nextOffset;
   }
 
-  throw new Error("Technical Elements calendar fetch stopped before the last page.");
+  throw new Error(
+    `Technical Elements calendar fetch stopped before the last page after ${maxPages} pages.`
+  );
 }
 
 /** @param {any} contact */
