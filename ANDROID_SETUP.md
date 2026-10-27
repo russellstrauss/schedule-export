@@ -80,8 +80,8 @@ Since `gcloud` CLI is not available on Android, you need to use a service accoun
    GOOGLE_REDIRECT_URI=http://localhost
    GOOGLE_TOKEN='{"access_token":"...","refresh_token":"...","token_type":"Bearer","expiry_date":...}'
    
-   # Skip portal sources (they need Puppeteer)
-   # SCHEDULE_SOURCES=
+   # Portal companies are turned on or off in user-settings.json.
+   # Leave portal passwords unset for IATSE-only mode.
    ```
 
 4. **Set secure permissions**:
@@ -121,10 +121,8 @@ If you want to enable portal sources (Rhino, CrewOne), install Chromium in Termu
    PUPPETEER_EXECUTABLE_PATH=/data/data/com.termux/files/usr/bin/chromium-browser
    ```
 
-3. **Add portal credentials to `.env`**:
+3. **Add portal credentials to `.env`**, and set that company to `true` in `user-settings.json`:
    ```bash
-   # Portal sources
-   SCHEDULE_SOURCES=rhino
    RHINO_EMAIL=your-email@example.com
    RHINO_PASSWORD=your-password
    ```
@@ -186,23 +184,21 @@ GOOGLE_TOKEN='{"access_token":"...","refresh_token":"...","token_type":"Bearer",
 
 ### Optional (for Portal Sources)
 
+Turn a company on or off in `user-settings.json` (`rhino`, `crewOne`, `technicalElements`, `iatse927`). Login pages are fixed in the source. A portal company set to `true` still needs its email and password. IATSE stays on while `iatse927` is `true` and still needs `GEMINI_API_KEY` and Firestore.
+
 ```bash
 # System Chromium
 PUPPETEER_EXECUTABLE_PATH=/data/data/com.termux/files/usr/bin/chromium-browser
 
 # Rhino
-SCHEDULE_SOURCES=rhino  # pragma: allowlist secret
 RHINO_EMAIL=your-email
 RHINO_PASSWORD=your-password
 
-# CrewOne (add crewOne to SCHEDULE_SOURCES)
-SCHEDULE_SOURCES=rhino,crewOne  # pragma: allowlist secret
+# Crew One
 CREWONE_EMAIL=your-email
 CREWONE_PASSWORD=your-password
-CREWONE_LOGIN_URL=https://your-portal-url
 
-# Technical Elements (add technicalElements to SCHEDULE_SOURCES)
-# Events are labeled Technical Elements. Credentials are for the LiveForce crew app.
+# Technical Elements. Calendar events use that label. Credentials are for the LiveForce crew app.
 TECHNICAL_ELEMENTS_EMAIL=your-email
 TECHNICAL_ELEMENTS_PASSWORD=your-password
 ```
@@ -257,7 +253,7 @@ You need a service account key file:
 
 At least one of these must be configured:
 - **IATSE**: `GEMINI_API_KEY` + Firestore credentials
-- **Portal Source**: `SCHEDULE_SOURCES` with credentials (requires Chromium)
+- **Portal company**: set it to `true` in `user-settings.json` and add its email and password (requires Chromium)
 
 ### "Permission denied" for firestore-key.json
 

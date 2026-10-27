@@ -7,7 +7,9 @@ dotenv.config();
 async function main() {
   const result = await trySyncIatse927FromStore();
   if (!result) {
-    throw new Error("IATSE sync skipped (check GEMINI_API_KEY and Firestore messages)");
+    throw new Error(
+      "IATSE sync skipped. Turn iatse927 on in user-settings.json, and check GEMINI_API_KEY and Firestore messages."
+    );
   }
 
   const { synced, parsed, warnings } = result;

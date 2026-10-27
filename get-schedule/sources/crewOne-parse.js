@@ -19,13 +19,14 @@ export function missingCredentialEnvVars() {
 export function getCredentials() {
   const missing = missingCredentialEnvVars();
   if (missing.length > 0) return null;
-  const loginUrl = process.env.CREWONE_LOGIN_URL || DEFAULT_LOGIN_URL;
   return {
     email: process.env.CREWONE_EMAIL,
     password: process.env.CREWONE_PASSWORD,
-    loginUrl
+    loginUrl: DEFAULT_LOGIN_URL
   };
 }
+
+export { DEFAULT_LOGIN_URL };
 
 /** Crew One dashboard: "Fri Jun 12 8:00 AM" (after normalizeCrew1DateTimeText) */
 const CREW1_DATETIME_PATTERN =

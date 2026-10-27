@@ -9,7 +9,7 @@ The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and fill in portal credentials, Google OAuth, and (for IATSE) `GEMINI_API_KEY` plus Firestore project.
+1. Copy `.env.example` to `.env` and fill in portal credentials, Google OAuth, and (for IATSE) `GEMINI_API_KEY` plus Firestore project. Turn companies on or off in `user-settings.json`. Portal login pages are fixed in the source.
 2. Place Google OAuth `credentials.json` in `get-schedule/google-calendar/` and authorize once:
 
 ```bash

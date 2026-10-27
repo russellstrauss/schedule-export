@@ -94,18 +94,24 @@ export async function syncSchedule(req, res) {
       const { storeIatse927Message, trySyncIatse927FromStore } = await import(
         "./get-schedule/ingest-iatse927.js"
       );
+      const { isSourceEnabled } = await import("./get-schedule/user-settings.js");
       const payload = body && typeof body === "object" ? body : {};
+      const syncing = isSourceEnabled("iatse927");
       console.log("📱 Starting IATSE 927 ingest (store)...");
       const result = await storeIatse927Message(payload);
 
       res.status(200).json({
         success: true,
-        message: "IATSE 927 message stored; calendar sync running in background",
+        message: syncing
+          ? "IATSE 927 message stored; calendar sync running in background"
+          : "IATSE 927 message stored; calendar sync is turned off",
         stored: result.stored,
         id: result.id,
-        syncing: true,
+        syncing,
         timestamp: new Date().toISOString()
       });
+
+      if (!syncing) return;
 
       try {
         const syncResult = await trySyncIatse927FromStore();

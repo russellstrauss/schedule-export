@@ -4,6 +4,9 @@ import { getSourcePurgePolicy } from "../google-calendar/purge-policy.js";
 import {
   classifyTechnicalElementsOffer,
   collectUpcomingRoles,
+  DEFAULT_API_BASE,
+  DEFAULT_LOGIN_URL,
+  DEFAULT_TIMEZONE,
   getCredentials,
   mapTechnicalElementsRole,
   sourceDisplayName,
@@ -13,10 +16,7 @@ import {
 
 const originalEnv = {
   TECHNICAL_ELEMENTS_EMAIL: process.env.TECHNICAL_ELEMENTS_EMAIL,
-  TECHNICAL_ELEMENTS_PASSWORD: process.env.TECHNICAL_ELEMENTS_PASSWORD,
-  TECHNICAL_ELEMENTS_LOGIN_URL: process.env.TECHNICAL_ELEMENTS_LOGIN_URL,
-  TECHNICAL_ELEMENTS_API_BASE: process.env.TECHNICAL_ELEMENTS_API_BASE,
-  TECHNICAL_ELEMENTS_TIMEZONE: process.env.TECHNICAL_ELEMENTS_TIMEZONE
+  TECHNICAL_ELEMENTS_PASSWORD: process.env.TECHNICAL_ELEMENTS_PASSWORD
 };
 
 afterEach(() => {
@@ -67,17 +67,15 @@ describe("technical elements credentials", () => {
     expect(getCredentials()).toBeNull();
   });
 
-  it("reads the login url and timezone overrides", () => {
+  it("uses the fixed login page, api, and timezone", () => {
     process.env.TECHNICAL_ELEMENTS_EMAIL = "crew@example.com";
     process.env.TECHNICAL_ELEMENTS_PASSWORD = "secret";
-    process.env.TECHNICAL_ELEMENTS_LOGIN_URL = "https://app.liveforce.co/login";
-    process.env.TECHNICAL_ELEMENTS_TIMEZONE = "America/Chicago";
     expect(getCredentials()).toMatchObject({
       email: "crew@example.com",
       password: "secret",
-      loginUrl: "https://app.liveforce.co/login",
-      timezone: "America/Chicago",
-      apiBase: "https://admin.liveforce.co/proxy/api"
+      loginUrl: DEFAULT_LOGIN_URL,
+      timezone: DEFAULT_TIMEZONE,
+      apiBase: DEFAULT_API_BASE
     });
   });
 });
@@ -286,8 +284,6 @@ describe("technical elements fetch", () => {
   it("logs in and maps the upcoming calendar", async () => {
     process.env.TECHNICAL_ELEMENTS_EMAIL = "crew@example.com";
     process.env.TECHNICAL_ELEMENTS_PASSWORD = "secret";
-    delete process.env.TECHNICAL_ELEMENTS_LOGIN_URL;
-    delete process.env.TECHNICAL_ELEMENTS_API_BASE;
 
     const typed = [];
     const queries = [];

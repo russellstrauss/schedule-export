@@ -6,6 +6,8 @@ import dotenv from "dotenv";
 import { parseRcsThread, mergeAndSortMessages } from "../get-schedule/iatse927-thread-parser.js";
 import { bulkAppendMessages, loadAllMessages } from "../get-schedule/iatse927-message-store.js";
 import { syncIatse927FromMessages } from "../get-schedule/ingest-iatse927.js";
+import { isSourceEnabled } from "../get-schedule/user-settings.js";
+import { sourceId } from "../get-schedule/sources/iatse927.js";
 
 dotenv.config();
 
@@ -94,6 +96,11 @@ async function main() {
   console.log(`💾 Firestore: inserted=${inserted}, skipped=${skipped}`);
 
   if (opts.noSync) return;
+
+  if (!isSourceEnabled(sourceId)) {
+    console.log(`ℹ️  ${sourceId} is turned off in user-settings.json; imported messages were not synced.`);
+    return;
+  }
 
   if (!process.env.GEMINI_API_KEY?.trim()) {
     throw new Error("GEMINI_API_KEY is required for sync. Use --no-sync to import only.");
