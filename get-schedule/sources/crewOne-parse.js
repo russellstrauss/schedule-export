@@ -212,6 +212,9 @@ export function isCrewOneOfferDeclined(entry) {
   return state === "declined" || state === "denied";
 }
 
+/** Popup lead time for offer-deadline events. Google Calendar reminders are minutes before start. */
+export const OFFER_DEADLINE_REMINDER_LEAD_MINUTES = 24 * 60;
+
 export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOneOfferDeadline(entry?.offerDeadlineText)) {
   if (!entry || !deadline) return null;
   const offerState = String(entry.offerState || "pending").toLowerCase();
@@ -256,7 +259,7 @@ export function buildCrewOneDeadlineReminderEvent(entry, deadline = parseCrewOne
     status: "confirmed",
     reminders: {
       useDefault: false,
-      overrides: [{ method: "popup", minutes: 0 }]
+      overrides: [{ method: "popup", minutes: OFFER_DEADLINE_REMINDER_LEAD_MINUTES }]
     }
   };
 }

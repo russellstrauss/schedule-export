@@ -13,6 +13,7 @@ import {
   parseCrewOneOfferDeadline,
   parseCrewOneOfferState,
   buildCrewOneDeadlineReminderEvent,
+  OFFER_DEADLINE_REMINDER_LEAD_MINUTES,
   isCrewOneOfferUnconfirmed,
   isCrewOneOfferDeclined,
   mapCrewOneDashboardRow,
@@ -273,8 +274,13 @@ describe("crewOne", () => {
       start: "2027-01-25T09:11:00",
       end: "2027-01-25T09:41:00",
       rowId: "1/25/2027 | 09:11 | A TEST SHOW | The Venue|deadlineReminder",
-      description: expect.stringContaining(deadlineText)
+      description: expect.stringContaining(deadlineText),
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: "popup", minutes: 24 * 60 }]
+      }
     });
+    expect(OFFER_DEADLINE_REMINDER_LEAD_MINUTES).toBe(24 * 60);
   });
 
   it("keeps deadline reminders pending when the page only says to accept or decline", () => {
