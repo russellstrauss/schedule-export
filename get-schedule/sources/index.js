@@ -1,11 +1,14 @@
+import { getEnabledSourceIds as enabledIdsFromUserSettings } from "../user-settings.js";
 import * as rhino from "./rhino.js";
 import * as crewOne from "./crewOne.js";
+import * as technicalElements from "./technicalElements.js";
 import * as iatse927 from "./iatse927.js";
 
 /** @type {Record<string, typeof rhino>} */
 export const sources = {
   rhino,
   crewOne,
+  technicalElements,
   iatse927
 };
 
@@ -13,11 +16,7 @@ export const sources = {
  * @returns {string[]}
  */
 export function getEnabledSourceIds() {
-  const raw = process.env.SCHEDULE_SOURCES || "rhino";
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return enabledIdsFromUserSettings();
 }
 
 /**

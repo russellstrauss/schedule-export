@@ -87,29 +87,33 @@ export RHINO_PASSWORD="your-password"
 
 **Note**: If you ran `deployment\prepare-oauth-env.ps1` or `deployment/prepare-oauth-env.sh` in Step 3, the Google OAuth variables are already set. Make sure both Rhino and Google OAuth variables are set before deploying.
 
-## Step 4b: Crew One portal
+## Step 4b: Portal companies
 
-To sync the Crew One contractor portal into the **same** Google Calendar, set credentials and enable the source:
+Which companies sync is set in [`user-settings.json`](../user-settings.json). Each of `rhino`, `crewOne`, `technicalElements`, and `iatse927` is `true` or `false`. The same file is used locally and by the deployed function. Portal login pages are fixed in the source.
+
+Rhino, Crew One, and IATSE start on. Technical Elements stays off until you set `technicalElements` to `true`.
+
+Set only the email and password for each company you turn on:
 
 **Windows (PowerShell):**
 ```powershell
-$env:CREWONE_LOGIN_URL = "https://portal.crew1.com/"
 $env:CREWONE_EMAIL = "your-email@example.com"
 $env:CREWONE_PASSWORD = "your-password"
-$env:SCHEDULE_SOURCES = "rhino,crewOne"
+$env:TECHNICAL_ELEMENTS_EMAIL = "your-email@example.com"
+$env:TECHNICAL_ELEMENTS_PASSWORD = "your-password"
 ```
 
 **Linux/Mac:**
 ```bash
-export CREWONE_LOGIN_URL="https://portal.crew1.com/"
 export CREWONE_EMAIL="your-email@example.com"
 export CREWONE_PASSWORD="your-password"
-export SCHEDULE_SOURCES="rhino,crewOne"
+export TECHNICAL_ELEMENTS_EMAIL="your-email@example.com"
+export TECHNICAL_ELEMENTS_PASSWORD="your-password"
 ```
 
-- `SCHEDULE_SOURCES` defaults to `rhino` if unset (safe rollout).
-- Sources without credentials are skipped with a warning.
-- If both portals are enabled, the function logs in to each sequentially (may need a longer timeout; deploy scripts use 600s when multiple sources are typical).
+A company set to `true` without credentials is skipped. With `iatse927` set to `false`, incoming SMS messages are still stored and the calendar sync waits until the flag is turned back on.
+
+Technical Elements staffs calls through the LiveForce crew app (`https://app.liveforce.co/my-calendar/upcoming`). Calendar events are labeled **Technical Elements**. Approved shifts are confirmed events. Invitations, applications, and reserve-list rows still on the upcoming calendar are added as unconfirmed. Cancelled and declined shifts are removed from the future calendar. Past Technical Elements events stay on the calendar.
 
 Copy [.env.example](../.env.example) to `.env` for local runs with `node sync.js`.
 

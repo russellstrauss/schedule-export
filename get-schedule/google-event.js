@@ -8,6 +8,10 @@ import {
 } from "./iatse927-event-description.js";
 import { normalizeStatus, scheduleRowId, isEventCancelled } from "./schedule-identity.js";
 import {
+  sourceDisplayName as technicalElementsDisplayName,
+  sourceId as technicalElementsSourceId
+} from "./sources/technicalElements-parse.js";
+import {
   formatShowWithVenueAbbreviation,
   resolveVenueAbbreviation
 } from "./venue-abbreviations.js";
@@ -44,6 +48,7 @@ function getSourceDisplayName(source) {
   if (source === "crewOne") return "Crew 1";
   if (source === "rhino") return "Rhino";
   if (source === "iatse927") return "IATSE";
+  if (source === technicalElementsSourceId) return technicalElementsDisplayName;
   return "";
 }
 
@@ -106,8 +111,9 @@ export const toGoogleEvent = (entry, options = {}) => {
   const startTimeStr = `${pad(startParts.hours)}:${pad(startParts.minutes)}`;
   const formattedTime = formatTimeForTitle(startTimeStr);
 
-  const isCrewOneUnconfirmed =
-    source === "crewOne" && String(entry.offerState || "").toLowerCase() === "pending";
+  const isOfferUnconfirmed =
+    (source === "crewOne" || source === technicalElementsSourceId) &&
+    String(entry.offerState || "").toLowerCase() === "pending";
 
   let summary;
   const sourceDisplayName = getSourceDisplayName(source);
@@ -127,7 +133,7 @@ export const toGoogleEvent = (entry, options = {}) => {
     summary = isUnconfirmed
       ? addTitleSuffixes(showTitle)
       : addTitleSuffixes(`${formattedTime} ${showTitle}`);
-  } else if (isCrewOneUnconfirmed) {
+  } else if (isOfferUnconfirmed) {
     summary = addTitleSuffixes(`UNCONFIRMED => ${formattedTime} ${titledShow(entry.show)}`);
   } else {
     const showName = source === "iatse927" ? iatse927EventTitle(entry) : entry.show;
@@ -155,7 +161,7 @@ export const toGoogleEvent = (entry, options = {}) => {
     description,
     start: startStr,
     end: endStr,
-    status: isCrewOneUnconfirmed ? "tentative" : normalizeStatus(entry.status),
+    status: isOfferUnconfirmed ? "tentative" : normalizeStatus(entry.status),
     rowId,
     source
   };

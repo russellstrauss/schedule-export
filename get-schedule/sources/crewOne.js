@@ -2,6 +2,7 @@ export {
   sourceId,
   missingCredentialEnvVars,
   getCredentials,
+  DEFAULT_LOGIN_URL,
   normalizeCrew1DateTimeText,
   parseCrew1DateTime,
   parseCrewOneOfferDeadline,

@@ -57,17 +57,17 @@ fi
 # Step 2: Build environment variables
 echo "Step 2: Preparing environment variables..."
 ENV_VARS="GOOGLE_CLOUD_PROJECT=${PROJECT_ID},RHINO_EMAIL=${RHINO_EMAIL},RHINO_PASSWORD=${RHINO_PASSWORD}"
-if [ -n "$SCHEDULE_SOURCES" ]; then
-  ENV_VARS="${ENV_VARS},SCHEDULE_SOURCES=${SCHEDULE_SOURCES}"
-fi
 if [ -n "$CREWONE_EMAIL" ]; then
   ENV_VARS="${ENV_VARS},CREWONE_EMAIL=${CREWONE_EMAIL}"
 fi
 if [ -n "$CREWONE_PASSWORD" ]; then
   ENV_VARS="${ENV_VARS},CREWONE_PASSWORD=${CREWONE_PASSWORD}"
 fi
-if [ -n "$CREWONE_LOGIN_URL" ]; then
-  ENV_VARS="${ENV_VARS},CREWONE_LOGIN_URL=${CREWONE_LOGIN_URL}"
+if [ -n "$TECHNICAL_ELEMENTS_EMAIL" ]; then
+  ENV_VARS="${ENV_VARS},TECHNICAL_ELEMENTS_EMAIL=${TECHNICAL_ELEMENTS_EMAIL}"
+fi
+if [ -n "$TECHNICAL_ELEMENTS_PASSWORD" ]; then
+  ENV_VARS="${ENV_VARS},TECHNICAL_ELEMENTS_PASSWORD=${TECHNICAL_ELEMENTS_PASSWORD}"
 fi
 
 # Add Google OAuth env vars if they exist
@@ -90,7 +90,7 @@ if [ -n "$GEMINI_MODEL" ]; then
   ENV_VARS="${ENV_VARS},GEMINI_MODEL=${GEMINI_MODEL}"
 fi
 
-echo "   (RHINO_*, optional CREWONE_* and SCHEDULE_SOURCES, GEMINI_*, plus Google OAuth vars)"
+echo "   (RHINO_*, optional CREWONE_*, TECHNICAL_ELEMENTS_*, GEMINI_*, plus Google OAuth vars)"
 
 # Step 3: Deploy the function
 echo ""
