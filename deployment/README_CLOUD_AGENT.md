@@ -81,6 +81,7 @@ Configure these in [Cursor Dashboard](https://cursor.com/settings) > Cloud Agent
 ### Optional Features
 - `SCHEDULE_SOURCES` - Comma-separated list (default: "rhino")
 - `CREWONE_EMAIL`, `CREWONE_PASSWORD`, `CREWONE_LOGIN_URL`
+- `TECHNICAL_ELEMENTS_EMAIL`, `TECHNICAL_ELEMENTS_PASSWORD`, optional `TECHNICAL_ELEMENTS_LOGIN_URL`, `TECHNICAL_ELEMENTS_TIMEZONE`
 - `GEMINI_API_KEY`, `GEMINI_MODEL`
 
 ## ❓ Troubleshooting

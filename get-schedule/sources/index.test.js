@@ -21,12 +21,22 @@ describe("getEnabledSourceIds", () => {
     process.env.SCHEDULE_SOURCES = "rhino, crewOne";
     expect(getEnabledSourceIds()).toEqual(["rhino", "crewOne"]);
   });
+
+  it("does not enable Technical Elements unless it is listed", () => {
+    delete process.env.SCHEDULE_SOURCES;
+    expect(getEnabledSourceIds()).not.toContain("technicalElements");
+    process.env.SCHEDULE_SOURCES = "rhino, technicalElements";
+    expect(getEnabledSourceIds()).toEqual(["rhino", "technicalElements"]);
+  });
 });
 
 describe("getSource", () => {
   it("should return known sources", () => {
     expect(getSource("rhino").sourceId).toBe("rhino");
     expect(getSource("crewOne").sourceId).toBe("crewOne");
+    expect(getSource("technicalElements").sourceId).toBe("technicalElements");
+    expect(getSource("technicalElements").sourceDisplayName).toBe("Technical Elements");
+    expect(getSource("technicalElements").removeAbsent).toBe(true);
   });
 
   it("should throw for unknown sources", () => {

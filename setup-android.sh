@@ -118,7 +118,7 @@ read -p "Token: " OAUTH_TOKEN
 echo ""
 echo "🌐 Portal Sources (Optional)"
 echo "----------------------------"
-echo "Portal sources (Rhino, CrewOne) require Chromium, which may not work well on Android."
+echo "Portal sources (Rhino, CrewOne, Technical Elements) require Chromium, which may not work well on Android."
 echo "You can skip this and use IATSE-only mode."
 echo ""
 
@@ -132,6 +132,8 @@ RHINO_PASSWORD=""
 CREWONE_EMAIL=""
 CREWONE_PASSWORD=""
 CREWONE_URL=""
+TECHNICAL_ELEMENTS_EMAIL=""
+TECHNICAL_ELEMENTS_PASSWORD=""
 CHROMIUM_PATH=""
 
 if [[ $CONFIGURE_PORTALS =~ ^[Yy]$ ]]; then
@@ -168,6 +170,21 @@ if [[ $CONFIGURE_PORTALS =~ ^[Yy]$ ]]; then
                 SCHEDULE_SOURCES="$SCHEDULE_SOURCES,crewOne"
             else
                 SCHEDULE_SOURCES="crewOne"
+            fi
+        fi
+
+        echo ""
+        read -p "Configure Technical Elements? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -p "Technical Elements email: " TECHNICAL_ELEMENTS_EMAIL
+            read -sp "Technical Elements password: " TECHNICAL_ELEMENTS_PASSWORD
+            echo
+
+            if [ -n "$SCHEDULE_SOURCES" ]; then
+                SCHEDULE_SOURCES="$SCHEDULE_SOURCES,technicalElements"
+            else
+                SCHEDULE_SOURCES="technicalElements"
             fi
         fi
     fi
@@ -223,6 +240,15 @@ EOF
 CREWONE_EMAIL=$CREWONE_EMAIL
 CREWONE_PASSWORD=$CREWONE_PASSWORD
 CREWONE_LOGIN_URL=$CREWONE_URL
+
+EOF
+    fi
+
+    if [[ $SCHEDULE_SOURCES == *"technicalElements"* ]]; then
+        cat >> .env << EOF
+# Technical Elements (LiveForce crew app). Calendar label is Technical Elements.
+TECHNICAL_ELEMENTS_EMAIL=$TECHNICAL_ELEMENTS_EMAIL
+TECHNICAL_ELEMENTS_PASSWORD=$TECHNICAL_ELEMENTS_PASSWORD
 
 EOF
     fi

@@ -1,6 +1,6 @@
 # schedule-export
 
-Syncs upcoming work calls from Rhino, Crew One, and IATSE 927 SMS into one Google Calendar.
+Syncs upcoming work calls from Rhino, Crew One, Technical Elements, and IATSE 927 SMS into one Google Calendar.
 
 The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 

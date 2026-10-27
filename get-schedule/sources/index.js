@@ -1,11 +1,13 @@
 import * as rhino from "./rhino.js";
 import * as crewOne from "./crewOne.js";
+import * as technicalElements from "./technicalElements.js";
 import * as iatse927 from "./iatse927.js";
 
 /** @type {Record<string, typeof rhino>} */
 export const sources = {
   rhino,
   crewOne,
+  technicalElements,
   iatse927
 };
 

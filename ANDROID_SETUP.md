@@ -6,7 +6,7 @@ This guide explains how to set up and run the schedule sync on Android using Ter
 
 1. ❌ **Puppeteer**: `@sparticuz/chromium` cannot download binaries for Android ARM64
 2. ❌ **Firestore Auth**: `gcloud` CLI authentication not available in Termux
-3. ⚠️ **Portal Sources**: Require Puppeteer/Chromium (Rhino, CrewOne)
+3. ⚠️ **Portal Sources**: Require Puppeteer/Chromium (Rhino, CrewOne, Technical Elements)
 
 ## Solutions
 
@@ -200,6 +200,11 @@ SCHEDULE_SOURCES=rhino,crewOne  # pragma: allowlist secret
 CREWONE_EMAIL=your-email
 CREWONE_PASSWORD=your-password
 CREWONE_LOGIN_URL=https://your-portal-url
+
+# Technical Elements (add technicalElements to SCHEDULE_SOURCES)
+# Events are labeled Technical Elements. Credentials are for the LiveForce crew app.
+TECHNICAL_ELEMENTS_EMAIL=your-email
+TECHNICAL_ELEMENTS_PASSWORD=your-password
 ```
 
 ## Getting API Keys

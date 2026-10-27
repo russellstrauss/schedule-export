@@ -113,6 +113,32 @@ export SCHEDULE_SOURCES="rhino,crewOne"
 
 Copy [.env.example](../.env.example) to `.env` for local runs with `node sync.js`.
 
+## Step 4b2: Technical Elements portal
+
+Technical Elements staffs calls through the LiveForce crew app (`https://app.liveforce.co/my-calendar/upcoming`). Calendar events are labeled **Technical Elements**. Add `technicalElements` to `SCHEDULE_SOURCES` only when these credentials are set; leaving it off does not change Rhino, Crew One, or IATSE sync.
+
+**Windows (PowerShell):**
+```powershell
+$env:TECHNICAL_ELEMENTS_EMAIL = "your-email@example.com"
+$env:TECHNICAL_ELEMENTS_PASSWORD = "your-password"
+if ($env:SCHEDULE_SOURCES) { $env:SCHEDULE_SOURCES = "$env:SCHEDULE_SOURCES,technicalElements" } else { $env:SCHEDULE_SOURCES = "technicalElements" }
+```
+
+**Linux/Mac:**
+```bash
+export TECHNICAL_ELEMENTS_EMAIL="your-email@example.com"
+export TECHNICAL_ELEMENTS_PASSWORD="your-password"
+if [ -n "$SCHEDULE_SOURCES" ]; then
+  export SCHEDULE_SOURCES="${SCHEDULE_SOURCES},technicalElements"
+else
+  export SCHEDULE_SOURCES="technicalElements"
+fi
+```
+
+Optional: `TECHNICAL_ELEMENTS_LOGIN_URL` (default `https://app.liveforce.co/login`) and `TECHNICAL_ELEMENTS_TIMEZONE` (default `America/New_York`).
+
+Approved shifts are confirmed events. Invitations, applications, and reserve-list rows still on the upcoming calendar are added as unconfirmed. Cancelled and declined shifts are removed from the future calendar. Past Technical Elements events stay on the calendar.
+
 ## Step 4c: Firestore for IATSE 927 SMS ingest
 
 IATSE ingest stores message text in Firestore collection `iatse927_messages`. If no database exists, ingest returns **500** with gRPC **NOT_FOUND**.
