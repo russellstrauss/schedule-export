@@ -99,7 +99,7 @@ cat << 'EOF'
 
   ▸ "Cannot download a binary for the provided platform: android"
     → This is expected. Skip portal sources (Rhino/CrewOne)
-    → Remove SCHEDULE_SOURCES from .env for IATSE-only mode
+    → Leave portal passwords unset, or set those companies to false in user-settings.json
 
   ▸ "Firestore credentials not available"
     → Check GOOGLE_APPLICATION_CREDENTIALS path is correct
@@ -152,7 +152,7 @@ cat << 'EOF'
 💡 TIPS
 ─────────────────────────────────────────────────────────────────
 
-  • Use IATSE-only mode (no SCHEDULE_SOURCES) for best Android compatibility
+  • Use IATSE-only mode (portal companies false, or no portal passwords) for best Android compatibility
   • Keep firestore-key.json secure - it grants access to your Firestore data
   • Get Gemini API key free at: https://aistudio.google.com/apikey
   • OAuth token can be obtained by running renew-auth.sh on your computer
@@ -182,7 +182,7 @@ cat << 'EOF'
   ✓ No browser automation issues
   ✓ Just IATSE + Firestore + Google Calendar
 
-  Simply don't set SCHEDULE_SOURCES in .env
+  Set rhino, crewOne, and technicalElements to false in user-settings.json
 
 
 ═══════════════════════════════════════════════════════════════════

@@ -46,14 +46,13 @@ Make sure your Cursor Dashboard has these secrets configured:
 - `GOOGLE_TOKEN` - Google OAuth refresh token (JSON, from token.json)
 
 **Optional (for additional features):**
-- `SCHEDULE_SOURCES` - Comma-separated list of sources (default: "rhino")
+
+Which companies sync is set in `user-settings.json` (`true` or `false` for `rhino`, `crewOne`, and `technicalElements`). Portal login pages are fixed in the source.
+
 - `CREWONE_EMAIL` - Crew One portal email
 - `CREWONE_PASSWORD` - Crew One portal password
-- `CREWONE_LOGIN_URL` - Crew One portal login URL
 - `TECHNICAL_ELEMENTS_EMAIL` - Technical Elements portal email (LiveForce crew app)
 - `TECHNICAL_ELEMENTS_PASSWORD` - Technical Elements portal password
-- `TECHNICAL_ELEMENTS_LOGIN_URL` - Technical Elements login URL (optional)
-- `TECHNICAL_ELEMENTS_TIMEZONE` - Timezone for the upcoming calendar query (optional)
 - `GEMINI_API_KEY` - Google AI Studio API key (for IATSE parsing)
 - `GEMINI_MODEL` - Gemini model name (optional, default: models/gemini-3.8-flash)
 

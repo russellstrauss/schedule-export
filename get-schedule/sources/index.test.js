@@ -1,32 +1,11 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
+import { enabledSourceIds, loadUserSettings } from "../user-settings.js";
 import { getEnabledSourceIds, getSource } from "./index.js";
 
 describe("getEnabledSourceIds", () => {
-  const original = process.env.SCHEDULE_SOURCES;
-
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env.SCHEDULE_SOURCES;
-    } else {
-      process.env.SCHEDULE_SOURCES = original;
-    }
-  });
-
-  it('should default to rhino when unset', () => {
-    delete process.env.SCHEDULE_SOURCES;
-    expect(getEnabledSourceIds()).toEqual(["rhino"]);
-  });
-
-  it("should parse comma-separated sources", () => {
-    process.env.SCHEDULE_SOURCES = "rhino, crewOne";
-    expect(getEnabledSourceIds()).toEqual(["rhino", "crewOne"]);
-  });
-
-  it("does not enable Technical Elements unless it is listed", () => {
-    delete process.env.SCHEDULE_SOURCES;
-    expect(getEnabledSourceIds()).not.toContain("technicalElements");
-    process.env.SCHEDULE_SOURCES = "rhino, technicalElements";
-    expect(getEnabledSourceIds()).toEqual(["rhino", "technicalElements"]);
+  it("follows the company flags in user settings", () => {
+    const settings = loadUserSettings();
+    expect(getEnabledSourceIds()).toEqual(enabledSourceIds(settings));
   });
 });
 

@@ -1,3 +1,4 @@
+import { getEnabledSourceIds as enabledIdsFromUserSettings } from "../user-settings.js";
 import * as rhino from "./rhino.js";
 import * as crewOne from "./crewOne.js";
 import * as technicalElements from "./technicalElements.js";
@@ -15,11 +16,7 @@ export const sources = {
  * @returns {string[]}
  */
 export function getEnabledSourceIds() {
-  const raw = process.env.SCHEDULE_SOURCES || "rhino";
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return enabledIdsFromUserSettings();
 }
 
 /**

@@ -6,6 +6,7 @@ import { rememberOfferDeadline } from "./offer-deadline-cache.js";
 import { toGoogleEvent } from "../utils.js";
 import {
   getCredentials,
+  DEFAULT_LOGIN_URL,
   parseCrew1DateTime,
   normalizeCrew1DateTimeText,
   matchDetailCall,
@@ -20,7 +21,7 @@ import {
 } from "./crewOne.js";
 
 describe("crewOne", () => {
-  const keys = ["CREWONE_EMAIL", "CREWONE_PASSWORD", "CREWONE_LOGIN_URL"];
+  const keys = ["CREWONE_EMAIL", "CREWONE_PASSWORD"];
   const saved = {};
 
   beforeEach(() => {
@@ -46,7 +47,7 @@ describe("crewOne", () => {
     process.env.CREWONE_PASSWORD = "secret";
     const creds = getCredentials();
     expect(creds.email).toBe("a@b.com");
-    expect(creds.loginUrl).toBe("https://portal.crew1.com/");
+    expect(creds.loginUrl).toBe(DEFAULT_LOGIN_URL);
   });
 
   it("parseCrew1DateTime parses dashboard format", () => {

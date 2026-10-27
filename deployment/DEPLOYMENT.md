@@ -87,57 +87,35 @@ export RHINO_PASSWORD="your-password"
 
 **Note**: If you ran `deployment\prepare-oauth-env.ps1` or `deployment/prepare-oauth-env.sh` in Step 3, the Google OAuth variables are already set. Make sure both Rhino and Google OAuth variables are set before deploying.
 
-## Step 4b: Crew One portal
+## Step 4b: Portal companies
 
-To sync the Crew One contractor portal into the **same** Google Calendar, set credentials and enable the source:
+Which companies sync is set in [`user-settings.json`](../user-settings.json). Each of `rhino`, `crewOne`, and `technicalElements` is `true` or `false`. The same file is used locally and by the deployed function. Portal login pages are fixed in the source.
+
+Rhino and Crew One start on. Technical Elements stays off until you set `technicalElements` to `true`.
+
+Set only the email and password for each company you turn on:
 
 **Windows (PowerShell):**
 ```powershell
-$env:CREWONE_LOGIN_URL = "https://portal.crew1.com/"
 $env:CREWONE_EMAIL = "your-email@example.com"
 $env:CREWONE_PASSWORD = "your-password"
-$env:SCHEDULE_SOURCES = "rhino,crewOne"
-```
-
-**Linux/Mac:**
-```bash
-export CREWONE_LOGIN_URL="https://portal.crew1.com/"
-export CREWONE_EMAIL="your-email@example.com"
-export CREWONE_PASSWORD="your-password"
-export SCHEDULE_SOURCES="rhino,crewOne"
-```
-
-- `SCHEDULE_SOURCES` defaults to `rhino` if unset (safe rollout).
-- Sources without credentials are skipped with a warning.
-- If both portals are enabled, the function logs in to each sequentially (may need a longer timeout; deploy scripts use 600s when multiple sources are typical).
-
-Copy [.env.example](../.env.example) to `.env` for local runs with `node sync.js`.
-
-## Step 4b2: Technical Elements portal
-
-Technical Elements staffs calls through the LiveForce crew app (`https://app.liveforce.co/my-calendar/upcoming`). Calendar events are labeled **Technical Elements**. Add `technicalElements` to `SCHEDULE_SOURCES` only when these credentials are set; leaving it off does not change Rhino, Crew One, or IATSE sync.
-
-**Windows (PowerShell):**
-```powershell
 $env:TECHNICAL_ELEMENTS_EMAIL = "your-email@example.com"
 $env:TECHNICAL_ELEMENTS_PASSWORD = "your-password"
-if ($env:SCHEDULE_SOURCES) { $env:SCHEDULE_SOURCES = "$env:SCHEDULE_SOURCES,technicalElements" } else { $env:SCHEDULE_SOURCES = "technicalElements" }
 ```
 
 **Linux/Mac:**
 ```bash
+export CREWONE_EMAIL="your-email@example.com"
+export CREWONE_PASSWORD="your-password"
 export TECHNICAL_ELEMENTS_EMAIL="your-email@example.com"
 export TECHNICAL_ELEMENTS_PASSWORD="your-password"
-if [ -n "$SCHEDULE_SOURCES" ]; then
-  export SCHEDULE_SOURCES="${SCHEDULE_SOURCES},technicalElements"
-else
-  export SCHEDULE_SOURCES="technicalElements"
-fi
 ```
 
-Optional: `TECHNICAL_ELEMENTS_LOGIN_URL` (default `https://app.liveforce.co/login`) and `TECHNICAL_ELEMENTS_TIMEZONE` (default `America/New_York`).
+A company set to `true` without credentials is skipped. IATSE 927 SMS ingest does not use these flags.
 
-Approved shifts are confirmed events. Invitations, applications, and reserve-list rows still on the upcoming calendar are added as unconfirmed. Cancelled and declined shifts are removed from the future calendar. Past Technical Elements events stay on the calendar.
+Technical Elements staffs calls through the LiveForce crew app (`https://app.liveforce.co/my-calendar/upcoming`). Calendar events are labeled **Technical Elements**. Approved shifts are confirmed events. Invitations, applications, and reserve-list rows still on the upcoming calendar are added as unconfirmed. Cancelled and declined shifts are removed from the future calendar. Past Technical Elements events stay on the calendar.
+
+Copy [.env.example](../.env.example) to `.env` for local runs with `node sync.js`.
 
 ## Step 4c: Firestore for IATSE 927 SMS ingest
 

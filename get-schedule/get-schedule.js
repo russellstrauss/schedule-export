@@ -170,7 +170,7 @@ export default async function getSchedule() {
 
   if (portalSourcesRan === 0 && !iatseResult) {
     throw new Error(
-      "No schedule sources ran. Configure SCHEDULE_SOURCES credentials and/or IATSE (GEMINI_API_KEY + Firestore messages)."
+      "No schedule sources ran. Turn a company on in user-settings.json and set its portal credentials, and/or configure IATSE (GEMINI_API_KEY + Firestore messages)."
     );
   }
 }

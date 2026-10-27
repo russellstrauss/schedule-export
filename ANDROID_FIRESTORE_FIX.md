@@ -205,7 +205,7 @@ If you only care about IATSE 927 sync and don't need portal sources (Rhino, Crew
 - More reliable on Android
 
 **How?**
-Just don't set `SCHEDULE_SOURCES` in your `.env`. The script will:
+Set `rhino`, `crewOne`, and `technicalElements` to `false` in `user-settings.json`, or leave their passwords out of `.env`. The script will:
 - ✅ Skip portal sources (no Chromium error)
 - ✅ Sync IATSE from Firestore
 - ✅ Update Google Calendar

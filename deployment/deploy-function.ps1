@@ -59,7 +59,7 @@ if (-not $SkipTokenCheck) {
 
 # Step 2: Prepare environment variables
 Write-Host "Step 2: Preparing environment variables..." -ForegroundColor Yellow
-Write-Host "   (RHINO_*, optional CREWONE_*, TECHNICAL_ELEMENTS_*, SCHEDULE_SOURCES, GEMINI_*, plus Google OAuth vars)" -ForegroundColor Gray
+Write-Host "   (RHINO_*, optional CREWONE_*, TECHNICAL_ELEMENTS_*, GEMINI_*, plus Google OAuth vars)" -ForegroundColor Gray
 
 $credentialsJson = Join-Path $repoRoot "get-schedule\google-calendar\credentials.json"
 $tokenJsonPath = Join-Path $repoRoot "get-schedule\google-calendar\token.json"
@@ -76,16 +76,12 @@ $yamlContent = @()
 
 # Add required environment variables
 $yamlContent += "GOOGLE_CLOUD_PROJECT: `"$ProjectId`""
-if ($env:SCHEDULE_SOURCES) { $yamlContent += "SCHEDULE_SOURCES: `"$($env:SCHEDULE_SOURCES -replace '"', '\"')`"" }
 if ($env:RHINO_EMAIL) { $yamlContent += "RHINO_EMAIL: `"$($env:RHINO_EMAIL -replace '"', '\"')`"" }
 if ($env:RHINO_PASSWORD) { $yamlContent += "RHINO_PASSWORD: `"$($env:RHINO_PASSWORD -replace '"', '\"')`"" }
 if ($env:CREWONE_EMAIL) { $yamlContent += "CREWONE_EMAIL: `"$($env:CREWONE_EMAIL -replace '"', '\"')`"" }
 if ($env:CREWONE_PASSWORD) { $yamlContent += "CREWONE_PASSWORD: `"$($env:CREWONE_PASSWORD -replace '"', '\"')`"" }
-if ($env:CREWONE_LOGIN_URL) { $yamlContent += "CREWONE_LOGIN_URL: `"$($env:CREWONE_LOGIN_URL -replace '"', '\"')`"" }
 if ($env:TECHNICAL_ELEMENTS_EMAIL) { $yamlContent += "TECHNICAL_ELEMENTS_EMAIL: `"$($env:TECHNICAL_ELEMENTS_EMAIL -replace '"', '\"')`"" }
 if ($env:TECHNICAL_ELEMENTS_PASSWORD) { $yamlContent += "TECHNICAL_ELEMENTS_PASSWORD: `"$($env:TECHNICAL_ELEMENTS_PASSWORD -replace '"', '\"')`"" }
-if ($env:TECHNICAL_ELEMENTS_LOGIN_URL) { $yamlContent += "TECHNICAL_ELEMENTS_LOGIN_URL: `"$($env:TECHNICAL_ELEMENTS_LOGIN_URL -replace '"', '\"')`"" }
-if ($env:TECHNICAL_ELEMENTS_TIMEZONE) { $yamlContent += "TECHNICAL_ELEMENTS_TIMEZONE: `"$($env:TECHNICAL_ELEMENTS_TIMEZONE -replace '"', '\"')`"" }
 if ($env:GOOGLE_CLIENT_ID) { $yamlContent += "GOOGLE_CLIENT_ID: `"$($env:GOOGLE_CLIENT_ID -replace '"', '\"')`"" }
 if ($env:GOOGLE_CLIENT_SECRET) { $yamlContent += "GOOGLE_CLIENT_SECRET: `"$($env:GOOGLE_CLIENT_SECRET -replace '"', '\"')`"" }
 if ($env:GOOGLE_REDIRECT_URI) { $yamlContent += "GOOGLE_REDIRECT_URI: `"$($env:GOOGLE_REDIRECT_URI -replace '"', '\"')`"" }

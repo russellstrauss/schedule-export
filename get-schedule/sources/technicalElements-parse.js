@@ -28,9 +28,9 @@ export function getCredentials() {
   return {
     email: process.env.TECHNICAL_ELEMENTS_EMAIL,
     password: process.env.TECHNICAL_ELEMENTS_PASSWORD,
-    loginUrl: process.env.TECHNICAL_ELEMENTS_LOGIN_URL || DEFAULT_LOGIN_URL,
-    apiBase: (process.env.TECHNICAL_ELEMENTS_API_BASE || DEFAULT_API_BASE).replace(/\/$/, ""),
-    timezone: process.env.TECHNICAL_ELEMENTS_TIMEZONE || DEFAULT_TIMEZONE
+    loginUrl: DEFAULT_LOGIN_URL,
+    apiBase: DEFAULT_API_BASE,
+    timezone: DEFAULT_TIMEZONE
   };
 }
 

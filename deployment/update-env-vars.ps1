@@ -56,14 +56,10 @@ $yamlContent = @()
 $varsToCheck = @(
     @{Name="RHINO_EMAIL"; SessionVar="RHINO_EMAIL"; Required=$false},
     @{Name="RHINO_PASSWORD"; SessionVar="RHINO_PASSWORD"; Required=$false},
-    @{Name="SCHEDULE_SOURCES"; SessionVar="SCHEDULE_SOURCES"; Required=$false},
     @{Name="CREWONE_EMAIL"; SessionVar="CREWONE_EMAIL"; Required=$false},
     @{Name="CREWONE_PASSWORD"; SessionVar="CREWONE_PASSWORD"; Required=$false},
-    @{Name="CREWONE_LOGIN_URL"; SessionVar="CREWONE_LOGIN_URL"; Required=$false},
     @{Name="TECHNICAL_ELEMENTS_EMAIL"; SessionVar="TECHNICAL_ELEMENTS_EMAIL"; Required=$false},
     @{Name="TECHNICAL_ELEMENTS_PASSWORD"; SessionVar="TECHNICAL_ELEMENTS_PASSWORD"; Required=$false},
-    @{Name="TECHNICAL_ELEMENTS_LOGIN_URL"; SessionVar="TECHNICAL_ELEMENTS_LOGIN_URL"; Required=$false},
-    @{Name="TECHNICAL_ELEMENTS_TIMEZONE"; SessionVar="TECHNICAL_ELEMENTS_TIMEZONE"; Required=$false},
     @{Name="GOOGLE_CLIENT_ID"; SessionVar="GOOGLE_CLIENT_ID"; Required=$false},
     @{Name="GOOGLE_CLIENT_SECRET"; SessionVar="GOOGLE_CLIENT_SECRET"; Required=$false},
     @{Name="GOOGLE_REDIRECT_URI"; SessionVar="GOOGLE_REDIRECT_URI"; Required=$false},
@@ -97,8 +93,18 @@ foreach ($var in $varsToCheck) {
     }
 }
 
+# Company on/off flags and portal login pages are not environment variables.
+$retiredVars = @(
+    "SCHEDULE_SOURCES",
+    "CREWONE_LOGIN_URL",
+    "TECHNICAL_ELEMENTS_LOGIN_URL",
+    "TECHNICAL_ELEMENTS_TIMEZONE",
+    "TECHNICAL_ELEMENTS_API_BASE"
+)
+
 # Add any other existing variables that weren't in our list
 foreach ($key in $currentEnvVars.Keys) {
+    if ($retiredVars -contains $key) { continue }
     $isInList = $varsToCheck | Where-Object { $_.Name -eq $key }
     if (-not $isInList) {
         $value = $currentEnvVars[$key]
