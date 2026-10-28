@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { validateEntryShape, validateEvidence } from "./iatse927-validation.js";
+import {
+  omitPastEventWarnings,
+  validateEntryShape,
+  validateEvidence
+} from "./iatse927-validation.js";
+
+const NOW = new Date("2026-10-28T07:00:00Z");
 
 describe("validateEntryShape", () => {
   it("accepts valid entry", () => {
@@ -75,5 +81,87 @@ describe("validateEvidence", () => {
       [{ text: "hello" }]
     );
     expect(warnings.some((w) => w.code === "EVIDENCE_OUT_OF_RANGE")).toBe(true);
+  });
+});
+
+describe("omitPastEventWarnings", () => {
+  it("drops a contradiction that only mentions a past show date", () => {
+    const warnings = omitPastEventWarnings(
+      [
+        {
+          code: "CONTRADICTION",
+          message:
+            "Reminder message mentions both 11AM Load In and 10PM Load Out for Need To Breathe on 9/19, but only 11AM Load In was confirmed."
+        }
+      ],
+      NOW
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("keeps a warning about an upcoming date and a warning with no date", () => {
+    const warnings = omitPastEventWarnings(
+      [
+        {
+          code: "CONTRADICTION",
+          message: "Reminder disagrees with the confirmation for Rod Wave on 11/14/2026."
+        },
+        { code: "WEAK_EVIDENCE", message: "One confirmation had no show name." }
+      ],
+      NOW
+    );
+    expect(warnings.map((warning) => warning.code)).toEqual(["CONTRADICTION", "WEAK_EVIDENCE"]);
+  });
+
+  it("keeps a warning that names both a past date and an upcoming date", () => {
+    const warnings = omitPastEventWarnings(
+      [
+        {
+          code: "DUPLICATE",
+          message: "9/19 Need To Breathe was repeated on 11/14."
+        }
+      ],
+      NOW
+    );
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("drops shape and evidence warnings for a call that already ended", () => {
+    const warnings = omitPastEventWarnings(
+      [
+        {
+          code: "MISSING_EVIDENCE",
+          message: "Shift 9/19/2026 11:00 Need To Breathe has no evidence message indices",
+          entry: {
+            source: "iatse927",
+            date: "9/19/2026",
+            callTime: "11:00",
+            show: "Need To Breathe",
+            venue: "",
+            location: "",
+            position: "",
+            type: "Load In",
+            status: "confirmed"
+          }
+        },
+        {
+          code: "MISSING_EVIDENCE",
+          message: "Shift 11/14/2026 10:30 Rod Wave has no evidence message indices",
+          entry: {
+            source: "iatse927",
+            date: "11/14/2026",
+            callTime: "22:00",
+            show: "Rod Wave",
+            venue: "",
+            location: "",
+            position: "",
+            type: "Load Out",
+            status: "confirmed"
+          }
+        }
+      ],
+      NOW
+    );
+    expect(warnings.map((warning) => warning.entry?.show)).toEqual(["Rod Wave"]);
   });
 });

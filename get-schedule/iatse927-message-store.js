@@ -135,7 +135,7 @@ export async function appendMessage(text, options = {}) {
     
     useRestClient = true;
     db = null;
-    console.warn("⚠️  [iatse927] Firestore SDK auth unavailable for append; using REST fallback");
+    console.warn("⚠️  Firestore SDK auth unavailable for append; using REST fallback");
     return appendMessageViaRest(text, { messageId, receivedAt: options.receivedAt });
   }
 }
@@ -296,7 +296,7 @@ export async function loadAllMessages() {
       if (isFirestoreCredentialsError(err) || isFirestoreNotFoundError(err)) {
         throw err;
       }
-      console.warn("⚠️  [iatse927] Firestore REST failed locally; trying Firestore SDK");
+      console.warn("⚠️  Firestore REST failed locally; trying Firestore SDK");
     }
   }
 
@@ -317,7 +317,7 @@ export async function loadAllMessages() {
     }
     useRestClient = true;
     db = null;
-    console.warn("⚠️  [iatse927] Firestore SDK auth unavailable; using gcloud REST fallback");
+    console.warn("⚠️  Firestore SDK auth unavailable; using gcloud REST fallback");
     return loadAllMessagesViaRest();
   }
 }

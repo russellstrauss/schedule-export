@@ -27,7 +27,7 @@ function filterAndMapEvents(entries, sourceId) {
 export function formatDeadlineReminderLogLine(event, sourceId) {
   const summary = event?.summary || "Untitled reminder";
   const start = event?.start || "unknown time";
-  return `  🕒 [${sourceId}] deadline reminder ${summary} (${start})`;
+  return `  🕒 deadline reminder ${summary} (${start})`;
 }
 
 /**
@@ -81,7 +81,7 @@ async function syncPortalSources(browser, portalSourceIds) {
       // login interstitial) doesn't discard schedules already fetched from
       // other sources.
       const message = err instanceof Error ? err.message : String(err);
-      console.warn(`⚠️  [${sourceId}] skipped: ${message}`);
+      console.warn(`⚠️  skipped: ${message}`);
     } finally {
       await page.close();
     }
@@ -156,21 +156,25 @@ export default async function getSchedule() {
   }
 
   let iatseResult = null;
-  try {
-    iatseResult = await trySyncIatse927FromStore();
-  } catch (err) {
-    if (isFirestoreCredentialsError(err)) {
-      console.warn(
-        `⚠️  Skipping iatse927: Firestore credentials not available (${err instanceof Error ? err.message : err})`
-      );
-    } else {
-      throw err;
+  if (!enabledIds.includes("iatse927")) {
+    console.log("ℹ️  iatse927 is turned off in user-settings.json; skipping calendar sync.");
+  } else {
+    try {
+      iatseResult = await trySyncIatse927FromStore();
+    } catch (err) {
+      if (isFirestoreCredentialsError(err)) {
+        console.warn(
+          `⚠️  Skipping iatse927: Firestore credentials not available (${err instanceof Error ? err.message : err})`
+        );
+      } else {
+        throw err;
+      }
     }
   }
 
   if (portalSourcesRan === 0 && !iatseResult) {
     throw new Error(
-      "No schedule sources ran. Configure SCHEDULE_SOURCES credentials and/or IATSE (GEMINI_API_KEY + Firestore messages)."
+      "No schedule sources ran. Turn a company on in user-settings.json and configure its credentials."
     );
   }
 }

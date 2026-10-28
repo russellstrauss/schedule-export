@@ -23,7 +23,7 @@ Unit tests cover:
 
 - Date/time formatting, row ids, cancellation, and Google event mapping (`get-schedule/utils.test.js`)
 - Calendar sync/purge (`get-schedule/google-calendar/add-event.test.js`)
-- Rhino table detection and Crew One parsing/reminders
+- Rhino table detection, Crew One parsing/reminders, and Technical Elements calendar mapping
 - IATSE ingest, Gemini extraction, validation, thread parsing, and enrichment
 - HTTP routing (`request-router.test.js`) and runtime detection
 

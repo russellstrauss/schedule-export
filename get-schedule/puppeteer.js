@@ -16,32 +16,68 @@ export function getPortalBrowserLaunchOptions(options = {}) {
   };
 }
 
+const PORTAL_NAV_TIMEOUT_MS = 90000;
+
+/**
+ * Stylesheets stay enabled. Aborting them can leave a parser-blocking request
+ * open, so DOMContentLoaded never fires and navigation waits until timeout.
+ * @param {string} resourceType
+ * @returns {"abort" | "continue"}
+ */
+export function portalRequestAction(resourceType) {
+  if (resourceType === "image" || resourceType === "font" || resourceType === "media") {
+    return "abort";
+  }
+  return "continue";
+}
+
 /** @param {import("puppeteer").Page} page */
 export async function configurePortalPage(page) {
-  page.setDefaultNavigationTimeout(90000);
-  page.setDefaultTimeout(90000);
+  page.setDefaultNavigationTimeout(PORTAL_NAV_TIMEOUT_MS);
+  page.setDefaultTimeout(PORTAL_NAV_TIMEOUT_MS);
   await page.setRequestInterception(true);
   page.on("request", (req) => {
-    const type = req.resourceType();
-    if (type === "image" || type === "stylesheet" || type === "font" || type === "media") {
-      req.abort();
-    } else {
-      req.continue();
+    if (typeof req.isInterceptResolutionHandled === "function" && req.isInterceptResolutionHandled()) {
+      return;
     }
+    const action =
+      portalRequestAction(req.resourceType()) === "abort" ? req.abort() : req.continue();
+    Promise.resolve(action).catch(() => {});
   });
+}
+
+/**
+ * This Puppeteer build rejects waitUntil "commit". Wait until the document is
+ * parsed, and keep going when that document is already usable after a timeout.
+ * @param {import("puppeteer").Page} page
+ * @param {string} url
+ */
+export async function gotoPortalPage(page, url) {
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: PORTAL_NAV_TIMEOUT_MS });
+  } catch (err) {
+    if (await documentReadyAt(page, url)) return;
+    throw err;
+  }
 }
 
 /**
  * @param {import("puppeteer").Page} page
  * @param {string} url
  */
-export async function gotoPortalPage(page, url) {
-  const opts = { waitUntil: "commit", timeout: 90000 };
-  try {
-    await page.goto(url, opts);
-  } catch {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
-  }
+async function documentReadyAt(page, url) {
+  return page
+    .evaluate((expected) => {
+      if (document.readyState === "loading" || !document.body || document.body.childNodes.length === 0) {
+        return false;
+      }
+      try {
+        return location.pathname === new URL(expected, location.href).pathname;
+      } catch {
+        return false;
+      }
+    }, url)
+    .catch(() => false);
 }
 
 export async function getPuppeteer() {

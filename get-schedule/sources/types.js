@@ -19,7 +19,7 @@
  * @property {string} [venueLink]
  * @property {number[]} [evidenceIndices]
  * @property {string} [offerDeadlineText]
- * @property {string} [offerState] - crewOne offer: accepted | pending | declined
+ * @property {string} [offerState] - offer: accepted | pending | declined
  */
 
 export const DEFAULT_TIMEZONE = "America/New_York";

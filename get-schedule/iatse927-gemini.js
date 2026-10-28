@@ -4,7 +4,8 @@ import { sourceId } from "./sources/iatse927.js";
 import {
   validateAllEntries,
   validateEvidence,
-  formatValidationReport
+  formatValidationReport,
+  omitPastEventWarnings
 } from "./iatse927-validation.js";
 import { expandDualTimeCallEntries } from "./iatse927-call-expander.js";
 import { buildGeminiContextPayload } from "./iatse927-message-context.js";
@@ -108,6 +109,7 @@ Before returning, double-check every entry against the full thread:
 - Single-time confirms after "load in filled" / "load out only" → one entry of the correct type.
 - Remove shifts contradicted by corrections or declines; remove duplicates.
 - Put issues you notice in warnings (codes: WEAK_EVIDENCE, CONTRADICTION, DUPLICATE, MISSED_DECLINE) but still return corrected entries.
+- Warn only about shifts on today's date or later in ${DEFAULT_TIMEZONE}. Omit warnings for earlier dates, and include the full MM/DD/YYYY date in each warning you do return.
 
 Return { entries, warnings }.`;
 
@@ -189,20 +191,42 @@ function normalizeGeminiWarnings(parsed) {
   return warnings.map((w) => /** @type {{ code: string; message: string }} */ (w));
 }
 
+function resolveModelName() {
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
+}
+
+/**
+ * Gemini 3/4 Flash defaults to medium thinking. This extraction is a structured
+ * transform, and a multi-minute silent POST is what Node reports as "fetch failed"
+ * when the connection drops before headers arrive. `low` is the lowest level
+ * gemini-3.8-flash accepts.
+ * @param {string} modelName
+ * @param {object} responseSchema
+ */
+function buildGenerationConfig(modelName, responseSchema) {
+  /** @type {Record<string, unknown>} */
+  const generationConfig = {
+    responseMimeType: "application/json",
+    responseSchema
+  };
+  if (/gemini-[34](?:[.\d-]|$)/i.test(modelName)) {
+    generationConfig.thinkingConfig = { thinkingLevel: "low" };
+  }
+  return generationConfig;
+}
+
 function getModel(systemInstruction, responseSchema) {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
+  const model = resolveModelName();
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL,
+    model,
     systemInstruction,
-    generationConfig: {
-      responseMimeType: "application/json",
-      responseSchema
-    }
+    generationConfig: buildGenerationConfig(model, responseSchema)
   });
 }
 
@@ -226,9 +250,72 @@ export function isGeminiUnavailableError(err) {
   );
 }
 
+const GEMINI_NETWORK_ERROR_RE =
+  /fetch failed|und_err_|econnreset|etimedout|enotfound|econnrefused|eai_again|socket hang up|other side closed|headers timeout|headerstimeouterror|connect timeouterror/i;
+
+function scrubSecrets(value) {
+  return String(value ?? "").replace(/AIza[0-9A-Za-z_-]+/g, "[key]");
+}
+
+/**
+ * Walk `error.cause` (undici hides the real code there) without repeating the API key.
+ * @param {unknown} err
+ */
+export function geminiErrorDetail(err) {
+  /** @type {string[]} */
+  const parts = [];
+  const seen = new Set();
+  let current = err;
+  while (current && typeof current === "object" && !seen.has(current) && parts.length < 6) {
+    seen.add(current);
+    const code = /** @type {{ code?: string }} */ (current).code;
+    const message = scrubSecrets(/** @type {{ message?: string }} */ (current).message || "");
+    const bit = [code, message].filter(Boolean).join(" ");
+    if (bit && !parts.some((part) => part.includes(bit) || bit.includes(part))) parts.push(bit);
+    current = /** @type {{ cause?: unknown }} */ (current).cause;
+  }
+  return parts.join(" | ");
+}
+
+/**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isGeminiNetworkError(err) {
+  return GEMINI_NETWORK_ERROR_RE.test(geminiErrorDetail(err));
+}
+
 function isGeminiRetryableError(err) {
   const status = /** @type {{ status?: number }} */ (err)?.status;
-  return status === 429 || status === 503;
+  if (status === 429 || status === 503) return true;
+  return isGeminiNetworkError(err);
+}
+
+/**
+ * The SDK replaces the undici error and drops `cause`. Capture it first.
+ * @param {() => Promise<unknown>} fn
+ */
+async function withFetchCause(fn) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    try {
+      return await originalFetch(url, options);
+    } catch (err) {
+      const detail = geminiErrorDetail(err);
+      const wrapped = new TypeError(detail || "fetch failed");
+      wrapped.cause = err;
+      const code =
+        /** @type {{ code?: string }} */ (err)?.code ||
+        /** @type {{ cause?: { code?: string } }} */ (err)?.cause?.code;
+      if (code) wrapped.code = code;
+      throw wrapped;
+    }
+  };
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 /**
@@ -243,18 +330,21 @@ async function generateContentWithRetry(model, prompt) {
   for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
     if (retryDelaysMs[attempt] > 0) {
       console.warn(
-        `⚠️  [${sourceId}] Gemini retry ${attempt}/${retryDelaysMs.length - 1} after ${retryDelaysMs[attempt] / 1000}s`
+        `⚠️  Gemini retry ${attempt}/${retryDelaysMs.length - 1} after ${retryDelaysMs[attempt] / 1000}s`
       );
       await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
     }
 
     try {
-      return await model.generateContent(prompt);
+      return await withFetchCause(() => model.generateContent(prompt));
     } catch (err) {
       lastError = err;
+      const detail = geminiErrorDetail(err);
       if (!isGeminiRetryableError(err) || attempt === retryDelaysMs.length - 1) {
+        if (detail) console.error(`❌ Gemini request failed: ${detail}`);
         throw err;
       }
+      console.warn(`⚠️  Gemini request failed (${detail || "unknown error"})`);
     }
   }
 
@@ -308,10 +398,14 @@ export async function resolveScheduleEntriesWithValidation(messages) {
 
   const shapeWarnings = validateAllEntries(entries);
   const evidenceWarnings = validateEvidence(entries, messages);
-  const warnings = [...geminiWarnings, ...shapeWarnings, ...evidenceWarnings];
+  const warnings = omitPastEventWarnings([
+    ...geminiWarnings,
+    ...shapeWarnings,
+    ...evidenceWarnings
+  ]);
 
   for (const w of warnings) {
-    console.warn(`⚠️  [${sourceId}] ${w.code}: ${w.message}`);
+    console.warn(`⚠️  ${w.code}: ${w.message}`);
   }
   formatValidationReport(warnings);
 

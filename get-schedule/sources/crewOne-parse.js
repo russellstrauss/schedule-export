@@ -19,13 +19,14 @@ export function missingCredentialEnvVars() {
 export function getCredentials() {
   const missing = missingCredentialEnvVars();
   if (missing.length > 0) return null;
-  const loginUrl = process.env.CREWONE_LOGIN_URL || DEFAULT_LOGIN_URL;
   return {
     email: process.env.CREWONE_EMAIL,
     password: process.env.CREWONE_PASSWORD,
-    loginUrl
+    loginUrl: DEFAULT_LOGIN_URL
   };
 }
+
+export { DEFAULT_LOGIN_URL };
 
 /** Crew One dashboard: "Fri Jun 12 8:00 AM" (after normalizeCrew1DateTimeText) */
 const CREW1_DATETIME_PATTERN =
@@ -126,6 +127,13 @@ export function parseCrewOneOfferState(text) {
 /** Dashboard action cells that must never be treated as a date/time. */
 export function isCrewOneActionCell(text) {
   return /^(respond|info|view details)$/i.test(String(text || "").trim());
+}
+
+/** Section titles on the Crew One dashboard, not show names. */
+export function isCrewOneDashboardHeading(text) {
+  return /^(upcoming calls|offers needing your response|events worked|most recent payments)$/i.test(
+    String(text || "").trim()
+  );
 }
 
 /**

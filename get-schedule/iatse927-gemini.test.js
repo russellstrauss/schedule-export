@@ -104,7 +104,11 @@ import {
 
   resolveScheduleEntriesWithValidation,
 
-  isGeminiUnavailableError
+  isGeminiUnavailableError,
+
+  isGeminiNetworkError,
+
+  geminiErrorDetail
 
 } from "./iatse927-gemini.js";
 
@@ -264,6 +268,20 @@ describe("isGeminiUnavailableError", () => {
 
   });
 
+});
+
+describe("gemini network errors", () => {
+  it("reads the undici cause hidden on fetch failed", () => {
+    const err = new TypeError("fetch failed");
+    err.cause = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+    expect(isGeminiNetworkError(err)).toBe(true);
+    expect(geminiErrorDetail(err)).toContain("UND_ERR_SOCKET");
+    expect(geminiErrorDetail(err)).toContain("other side closed");
+  });
+
+  it("ignores ordinary extraction failures", () => {
+    expect(isGeminiNetworkError(new Error("Gemini returned no valid schedule entries"))).toBe(false);
+  });
 });
 
 

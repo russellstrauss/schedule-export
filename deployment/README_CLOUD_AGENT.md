@@ -79,8 +79,11 @@ Configure these in [Cursor Dashboard](https://cursor.com/settings) > Cloud Agent
 - `GOOGLE_CLOUD_PROJECT` (optional, extracted from service account key)
 
 ### Optional Features
-- `SCHEDULE_SOURCES` - Comma-separated list (default: "rhino")
-- `CREWONE_EMAIL`, `CREWONE_PASSWORD`, `CREWONE_LOGIN_URL`
+
+Company on/off flags live in `user-settings.json`, not in the environment.
+
+- `CREWONE_EMAIL`, `CREWONE_PASSWORD`
+- `TECHNICAL_ELEMENTS_EMAIL`, `TECHNICAL_ELEMENTS_PASSWORD`
 - `GEMINI_API_KEY`, `GEMINI_MODEL`
 
 ## ❓ Troubleshooting

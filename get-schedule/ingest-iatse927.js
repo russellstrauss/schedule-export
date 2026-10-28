@@ -11,6 +11,7 @@ import {
 import { isFirestoreProjectIdError } from "./iatse927-firestore-auth.js";
 import { resolveScheduleEntriesWithValidation, isGeminiUnavailableError } from "./iatse927-gemini.js";
 import { sourceId } from "./sources/iatse927.js";
+import { isSourceEnabled } from "./user-settings.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
 
@@ -123,6 +124,11 @@ export async function resyncIatse927FromStore() {
  * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null>}
  */
 export async function trySyncIatse927FromStore() {
+  if (!isSourceEnabled(sourceId)) {
+    console.log(`ℹ️  ${sourceId} is turned off in user-settings.json; skipping calendar sync.`);
+    return null;
+  }
+
   if (!process.env.GEMINI_API_KEY?.trim()) {
     console.warn(`⚠️  Skipping ${sourceId}: GEMINI_API_KEY not configured`);
     return null;
@@ -184,7 +190,7 @@ export async function storeIatse927Message(body) {
 
   try {
     const { appended, id } = await appendMessage(text, { messageId });
-    console.log(`ℹ️  [${sourceId}] Message stored: appended=${appended}, id=${id}`);
+    console.log(`ℹ️  Message stored: appended=${appended}, id=${id}`);
     return { stored: appended, id };
   } catch (err) {
     if (isFirestoreNotFoundError(err)) {

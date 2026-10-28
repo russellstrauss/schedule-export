@@ -6,6 +6,7 @@ import { rememberOfferDeadline } from "./offer-deadline-cache.js";
 import { toGoogleEvent } from "../utils.js";
 import {
   getCredentials,
+  DEFAULT_LOGIN_URL,
   parseCrew1DateTime,
   normalizeCrew1DateTimeText,
   matchDetailCall,
@@ -17,11 +18,12 @@ import {
   isCrewOneOfferUnconfirmed,
   isCrewOneOfferDeclined,
   mapCrewOneDashboardRow,
-  isCrewOneActionCell
+  isCrewOneActionCell,
+  isCrewOneDashboardHeading
 } from "./crewOne.js";
 
 describe("crewOne", () => {
-  const keys = ["CREWONE_EMAIL", "CREWONE_PASSWORD", "CREWONE_LOGIN_URL"];
+  const keys = ["CREWONE_EMAIL", "CREWONE_PASSWORD"];
   const saved = {};
 
   beforeEach(() => {
@@ -47,7 +49,7 @@ describe("crewOne", () => {
     process.env.CREWONE_PASSWORD = "secret";
     const creds = getCredentials();
     expect(creds.email).toBe("a@b.com");
-    expect(creds.loginUrl).toBe("https://portal.crew1.com/");
+    expect(creds.loginUrl).toBe(DEFAULT_LOGIN_URL);
   });
 
   it("parseCrew1DateTime parses dashboard format", () => {
@@ -317,6 +319,66 @@ describe("crewOne", () => {
       offerState: "accepted"
     });
     expect(reminder).toBeNull();
+  });
+
+  it("recognizes dashboard section titles", () => {
+    expect(isCrewOneDashboardHeading("Upcoming Calls")).toBe(true);
+    expect(isCrewOneDashboardHeading("Offers Needing Your Response")).toBe(true);
+    expect(isCrewOneDashboardHeading("CHAYANNE 2026")).toBe(false);
+  });
+
+  it("does not warn about a deadline when the only offer text is the Upcoming Calls heading", async () => {
+    process.env.CREWONE_EMAIL = "a@b.com";
+    process.env.CREWONE_PASSWORD = "secret";
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => {
+      warnings.push(args.map(String).join(" "));
+    };
+
+    const page = {
+      async goto() {},
+      async waitForFunction() { return true; },
+      async waitForNetworkIdle() {},
+      async $(selector) { return { selector }; },
+      async focus() { return true; },
+      async type() { return true; },
+      url() { return "https://portal.crew1.com/dashboard"; },
+      evaluate(fn, ...args) {
+        const src = String(fn);
+        if (src.includes("scrollBy")) return Promise.resolve(true);
+        if (src.includes("window.location.pathname")) return Promise.resolve(true);
+        if (src.includes("document.querySelector(s).value = \"\"")) return Promise.resolve(null);
+        if (src.includes("querySelectorAll(\"button\")") || src.includes("querySelectorAll('button')")) {
+          return Promise.resolve(undefined);
+        }
+        if (src.includes("querySelectorAll('table')") && src.includes("detailLink")) {
+          if (/Offers Needing Your Response/i.test(String(args[0] || ""))) {
+            return Promise.resolve([{
+              event: "Upcoming Calls",
+              where: "",
+              position: "",
+              dateTime: "",
+              detailUrl: "https://portal.crew1.com/response/1"
+            }]);
+          }
+          return Promise.resolve([]);
+        }
+        if (src.includes("querySelectorAll(\"h1,h2,h3,h4,h5,h6\")") || src.includes("querySelectorAll('h1,h2,h3,h4,h5,h6')")) {
+          return Promise.resolve([{ textContent: "Upcoming Calls" }]);
+        }
+        return Promise.resolve(undefined);
+      }
+    };
+
+    try {
+      const { fetchSchedule } = await import("./crewOne.js");
+      const entries = await fetchSchedule(page);
+      expect(entries).toHaveLength(0);
+      expect(warnings.some((line) => line.includes("No offer deadline"))).toBe(false);
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 
   it("keeps offer rows unconfirmed when the upcoming fallback also finds them", async () => {

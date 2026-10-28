@@ -3,6 +3,7 @@ import {
   normalizeScheduleRowId,
   rhinoRowMatchKey
 } from "../schedule-identity.js";
+import { sourceId as technicalElementsSourceId } from "../sources/technicalElements-parse.js";
 
 export const RECENT_PAST_EVENT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 
@@ -16,7 +17,7 @@ export const RECENT_PAST_EVENT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 export function getSourcePurgePolicy(source) {
   return {
     skipDeadlineReminders: source === "crewOne",
-    keepPastEvents: source === "crewOne",
+    keepPastEvents: source === "crewOne" || source === technicalElementsSourceId,
     deletePastIfAbsent: source === "iatse927",
     deleteRecentPastIfAbsent: source === "rhino",
     activeMatchKey: source === "crewOne" ? crewOneRowMatchKey : null,

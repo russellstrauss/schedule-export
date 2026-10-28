@@ -1,6 +1,6 @@
 # schedule-export
 
-Syncs upcoming work calls from Rhino, Crew One, and IATSE 927 SMS into one Google Calendar.
+Syncs upcoming work calls from Rhino, Crew One, Technical Elements, and IATSE 927 SMS into one Google Calendar.
 
 The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 
@@ -9,7 +9,7 @@ The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and fill in portal credentials, Google OAuth, and (for IATSE) `GEMINI_API_KEY` plus Firestore project.
+1. Copy `.env.example` to `.env` and fill in portal credentials, Google OAuth, and (for IATSE) `GEMINI_API_KEY` plus Firestore project. Turn companies on or off in `user-settings.json`. Portal login pages are fixed in the source.
 2. Place Google OAuth `credentials.json` in `get-schedule/google-calendar/` and authorize once:
 
 ```bash

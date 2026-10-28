@@ -4,6 +4,7 @@ import {
   formatCrewOneEventDescription,
   getCredentials,
   isCrewOneActionCell,
+  isCrewOneDashboardHeading,
   matchDetailCall,
   parseCrew1DateTime,
   sourceId
@@ -13,12 +14,15 @@ import {
  * @param {import("puppeteer").Page} page
  */
 async function loginAndOpenDashboard(page, creds) {
-  // Allow a longer navigation timeout for slower devices/networks.
-  await page.goto(creds.loginUrl, { waitUntil: "networkidle2", timeout: 120000 });
+  // The portal keeps connections open, so network-idle waits run out their
+  // whole timeout. The login form and dashboard headings are the ready checks.
+  await gotoPortalPage(page, creds.loginUrl);
 
   // Try a set of selectors for the email and password fields to be resilient
   // to portal markup/placeholder changes. Use the first selector that exists.
   const emailSelectors = [
+    "#UserName",
+    'input[name="UserName"]',
     'input[placeholder="Email Address..."]',
     'input[placeholder*="Email"]',
     'input[type="email"]',
@@ -32,6 +36,12 @@ async function loginAndOpenDashboard(page, creds) {
     'input[name="password"]',
     'input[id*="password"]'
   ];
+
+  await page.waitForFunction(
+    (selectors) => selectors.some((selector) => document.querySelector(selector)),
+    { timeout: 90000 },
+    emailSelectors
+  );
 
   async function findAndType(selectors, value) {
     for (const sel of selectors) {
@@ -74,7 +84,6 @@ async function loginAndOpenDashboard(page, creds) {
       { timeout: 30000 }
     )
     .catch(() => {});
-  await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
 
   const pathname = new URL(page.url()).pathname;
   if (/bgcheck/i.test(pathname)) {
@@ -136,6 +145,8 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
     const timePattern = /\d{1,2}:\d{2}\s*(AM|PM)/i;
     const headingRe = new RegExp(headingPattern, "i");
     const isAction = (t) => /^(respond|info|view details)$/i.test(trim(t));
+    const isSectionTitle = (t) =>
+      /^(upcoming calls|offers needing your response|events worked|most recent payments)$/i.test(trim(t));
     const looksLikeDateTime = (t) => {
       const norm = trim(t).replace(/\s+/g, " ");
       return (monthAbbr.test(norm) || monthNames.test(norm)) && timePattern.test(norm);
@@ -198,7 +209,7 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
             tr.querySelector("td:last-child a");
           return mapRow(cellTexts, headerTexts, detailLink?.href || null);
         })
-        .filter((row) => row.event && !isAction(row.event));
+        .filter((row) => row.event && !isAction(row.event) && !isSectionTitle(row.event));
     };
 
     // Locate the "Upcoming Calls" heading (case-insensitive) and search its
@@ -218,12 +229,15 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
           Boolean(heading.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING)
       );
       const belongsToSection = (element) => {
-        const followsHeading = Boolean(
-          heading.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING
-        );
+        const afterHeading = heading.compareDocumentPosition(element);
+        const followsHeading =
+          (afterHeading & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+          (afterHeading & Node.DOCUMENT_POSITION_CONTAINED_BY) === 0;
+        if (!nextSectionHeading) return followsHeading;
+        const beforeNext = element.compareDocumentPosition(nextSectionHeading);
         const precedesNextHeading =
-          !nextSectionHeading ||
-          Boolean(element.compareDocumentPosition(nextSectionHeading) & Node.DOCUMENT_POSITION_FOLLOWING);
+          (beforeNext & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 &&
+          (beforeNext & Node.DOCUMENT_POSITION_CONTAINED_BY) === 0;
         return followsHeading && precedesNextHeading;
       };
 
@@ -241,6 +255,9 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
         for (const sel of candidateSelectors) {
           const elems = [...container.querySelectorAll(sel)].filter(belongsToSection);
           for (const el of elems) {
+            if ([...el.querySelectorAll("h1,h2,h3,h4,h5,h6")].some((h) => isSectionTitle(h.textContent))) {
+              continue;
+            }
             const text = (el.innerText || el.textContent || '').trim();
             if (!text) continue;
             // Heuristic extraction: lines, find event/where/date/time
@@ -264,6 +281,7 @@ async function scrapePortalRows(page, headingPattern, allowGlobalFallback = fals
                 (l) => monthNames.test(l) || monthAbbr.test(l) || /\bMon|Tue|Wed|Thu|Fri|Sat|Sun\b/i.test(l)
               ) || "";
             const timeLine = lines.find((l) => timePattern.test(l)) || "";
+            if (!eventLine || isSectionTitle(eventLine)) continue;
             results.push({
               event: eventLine,
               where: "",
@@ -463,8 +481,10 @@ async function scrapeEventDetail(page) {
  */
 async function fetchEventDetail(page, detailUrl, cache) {
   if (cache.has(detailUrl)) return cache.get(detailUrl);
-  await page.goto(detailUrl, { waitUntil: "networkidle2", timeout: 60000 });
-  await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
+  await gotoPortalPage(page, detailUrl);
+  await page
+    .waitForFunction(() => (document.body?.innerText || "").trim().length > 40, { timeout: 30000 })
+    .catch(() => {});
   const detail = await scrapeEventDetail(page);
   cache.set(detailUrl, detail);
   return detail;
@@ -507,8 +527,12 @@ export async function fetchSchedule(page) {
   // The dashboard omits the Upcoming Calls heading when there are no calls.
   // Do not scan all dashboard tables in that case: doing so relabels pending
   // offer rows as accepted upcoming calls.
-  const upcomingRows = (await scrapeUpcomingRows(page, false)).map((r) => ({ ...r, section: "upcoming" }));
-  const offerRows = (await scrapeOfferRows(page)).map((r) => ({ ...r, section: "offers" }));
+  const upcomingRows = (await scrapeUpcomingRows(page, false))
+    .filter((row) => !isCrewOneDashboardHeading(row.event))
+    .map((r) => ({ ...r, section: "upcoming" }));
+  const offerRows = (await scrapeOfferRows(page))
+    .filter((row) => !isCrewOneDashboardHeading(row.event))
+    .map((r) => ({ ...r, section: "offers" }));
   const rawRows = [];
   const seenRowKeys = new Set();
   // If portal markup causes the same row to be discovered in both sections,
@@ -529,11 +553,12 @@ export async function fetchSchedule(page) {
       const base = creds.loginUrl.replace(/\/$/, "");
       const listUrl = new URL('/view_upcoming', base).toString();
       await gotoPortalPage(page, listUrl);
-      await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => {});
       // The dedicated upcoming-calls page may not repeat the dashboard heading,
       // so only that page may scan all tables as a fallback. On the dashboard,
       // doing so can misclassify the open-offers table as accepted calls.
-      const altRows = await scrapeUpcomingRows(page, true);
+      const altRows = (await scrapeUpcomingRows(page, true)).filter(
+        (row) => !isCrewOneDashboardHeading(row.event)
+      );
       if (altRows && altRows.length > upcomingCount) {
         for (const row of altRows) {
           const tagged = { ...row, section: "upcoming" };
@@ -575,7 +600,7 @@ export async function fetchSchedule(page) {
     }
     if (rowObj.section === "offers" && offerState === "pending" && !offerDeadlineText) {
       console.warn(
-        `[crewOne] No offer deadline text for ${rowObj.event}` +
+        `No offer deadline text for ${rowObj.event}` +
           (rowObj.detailUrl ? ` (${rowObj.detailUrl})` : "") +
           " — deadline reminder will not be created"
       );
@@ -641,7 +666,7 @@ export async function fetchSchedule(page) {
       String(rowObj.dateTime).trim() !== "" &&
       !isCrewOneActionCell(rowObj.dateTime)
     ) {
-      console.warn(`[crewOne] Could not parse date/time: "${rowObj.dateTime}" for ${rowObj.event}`);
+      console.warn(`Could not parse date/time: "${rowObj.dateTime}" for ${rowObj.event}`);
     }
   }
 

@@ -118,20 +118,22 @@ read -p "Token: " OAUTH_TOKEN
 echo ""
 echo "🌐 Portal Sources (Optional)"
 echo "----------------------------"
-echo "Portal sources (Rhino, CrewOne) require Chromium, which may not work well on Android."
+echo "Portal sources (Rhino, Crew One, Technical Elements) require Chromium, which may not work well on Android."
+echo "Which companies sync is set in user-settings.json. This step only stores passwords."
 echo "You can skip this and use IATSE-only mode."
 echo ""
 
-read -p "Do you want to configure portal sources? (y/N) " -n 1 -r
+read -p "Do you want to store portal passwords? (y/N) " -n 1 -r
 echo
 CONFIGURE_PORTALS=$REPLY
 
-SCHEDULE_SOURCES=""
+STORE_PORTAL_PASSWORDS="false"
 RHINO_EMAIL=""
 RHINO_PASSWORD=""
 CREWONE_EMAIL=""
 CREWONE_PASSWORD=""
-CREWONE_URL=""
+TECHNICAL_ELEMENTS_EMAIL=""
+TECHNICAL_ELEMENTS_PASSWORD=""
 CHROMIUM_PATH=""
 
 if [[ $CONFIGURE_PORTALS =~ ^[Yy]$ ]]; then
@@ -145,30 +147,32 @@ if [[ $CONFIGURE_PORTALS =~ ^[Yy]$ ]]; then
     fi
 
     if [ -n "$CHROMIUM_PATH" ]; then
+        STORE_PORTAL_PASSWORDS="true"
         echo ""
-        read -p "Configure Rhino? (y/N) " -n 1 -r
+        read -p "Store Rhino credentials? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             read -p "Rhino email: " RHINO_EMAIL
             read -sp "Rhino password: " RHINO_PASSWORD
             echo
-            SCHEDULE_SOURCES="rhino"
         fi
 
         echo ""
-        read -p "Configure CrewOne? (y/N) " -n 1 -r
+        read -p "Store Crew One credentials? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            read -p "CrewOne email: " CREWONE_EMAIL
-            read -sp "CrewOne password: " CREWONE_PASSWORD
+            read -p "Crew One email: " CREWONE_EMAIL
+            read -sp "Crew One password: " CREWONE_PASSWORD
             echo
-            read -p "CrewOne login URL: " CREWONE_URL
-            
-            if [ -n "$SCHEDULE_SOURCES" ]; then
-                SCHEDULE_SOURCES="$SCHEDULE_SOURCES,crewOne"
-            else
-                SCHEDULE_SOURCES="crewOne"
-            fi
+        fi
+
+        echo ""
+        read -p "Store Technical Elements credentials? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            read -p "Technical Elements email: " TECHNICAL_ELEMENTS_EMAIL
+            read -sp "Technical Elements password: " TECHNICAL_ELEMENTS_PASSWORD
+            echo
         fi
     fi
 fi
@@ -196,19 +200,13 @@ GOOGLE_TOKEN='$OAUTH_TOKEN'
 
 EOF
 
-if [ -n "$SCHEDULE_SOURCES" ]; then
-    cat >> .env << EOF
-# Portal Sources
-SCHEDULE_SOURCES=$SCHEDULE_SOURCES
-
-EOF
-
+if [ "$STORE_PORTAL_PASSWORDS" = "true" ]; then
     if [ -n "$CHROMIUM_PATH" ]; then
         echo "PUPPETEER_EXECUTABLE_PATH=$CHROMIUM_PATH" >> .env
         echo "" >> .env
     fi
 
-    if [[ $SCHEDULE_SOURCES == *"rhino"* ]]; then
+    if [ -n "$RHINO_EMAIL" ]; then
         cat >> .env << EOF
 # Rhino
 RHINO_EMAIL=$RHINO_EMAIL
@@ -217,12 +215,20 @@ RHINO_PASSWORD=$RHINO_PASSWORD
 EOF
     fi
 
-    if [[ $SCHEDULE_SOURCES == *"crewOne"* ]]; then
+    if [ -n "$CREWONE_EMAIL" ]; then
         cat >> .env << EOF
-# CrewOne
+# Crew One
 CREWONE_EMAIL=$CREWONE_EMAIL
 CREWONE_PASSWORD=$CREWONE_PASSWORD
-CREWONE_LOGIN_URL=$CREWONE_URL
+
+EOF
+    fi
+
+    if [ -n "$TECHNICAL_ELEMENTS_EMAIL" ]; then
+        cat >> .env << EOF
+# Technical Elements (LiveForce crew app). Calendar label is Technical Elements.
+TECHNICAL_ELEMENTS_EMAIL=$TECHNICAL_ELEMENTS_EMAIL
+TECHNICAL_ELEMENTS_PASSWORD=$TECHNICAL_ELEMENTS_PASSWORD
 
 EOF
     fi
@@ -252,9 +258,10 @@ echo "  2. Test Firestore connection: node scripts/list-iatse927.js"
 echo "  3. Run a sync: node sync.js"
 echo ""
 
-if [ -z "$SCHEDULE_SOURCES" ]; then
-    echo "💡 Tip: You're in IATSE-only mode (no portal sources)."
+if [ "$STORE_PORTAL_PASSWORDS" != "true" ]; then
+    echo "💡 Tip: You're in IATSE-only mode (no portal passwords)."
     echo "   This is the most reliable setup for Android."
+    echo "   Company on/off flags are in user-settings.json."
     echo ""
 fi
 
