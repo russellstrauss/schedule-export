@@ -3,6 +3,7 @@ import {
   appOriginFromLoginUrl,
   collectUpcomingRoles,
   getCredentials,
+  isScheduledTechnicalElementsRole,
   mapTechnicalElementsRole,
   sourceId
 } from "./technicalElements-parse.js";
@@ -141,7 +142,7 @@ export async function fetchSchedule(page) {
       })
     );
 
-    return roles.map((role) => {
+    return roles.filter(isScheduledTechnicalElementsRole).map((role) => {
       const entry = mapTechnicalElementsRole(role, { appOrigin });
       if (!entry) {
         const label = role?.name || role?.job?.headline || role?.id || "shift";

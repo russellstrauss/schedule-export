@@ -245,7 +245,7 @@ async function generateContentWithRetry(model, prompt) {
   for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
     if (retryDelaysMs[attempt] > 0) {
       console.warn(
-        `⚠️  [${sourceId}] Gemini retry ${attempt}/${retryDelaysMs.length - 1} after ${retryDelaysMs[attempt] / 1000}s`
+        `⚠️  Gemini retry ${attempt}/${retryDelaysMs.length - 1} after ${retryDelaysMs[attempt] / 1000}s`
       );
       await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
     }
@@ -317,7 +317,7 @@ export async function resolveScheduleEntriesWithValidation(messages) {
   ]);
 
   for (const w of warnings) {
-    console.warn(`⚠️  [${sourceId}] ${w.code}: ${w.message}`);
+    console.warn(`⚠️  ${w.code}: ${w.message}`);
   }
   formatValidationReport(warnings);
 

@@ -27,7 +27,7 @@ function filterAndMapEvents(entries, sourceId) {
 export function formatDeadlineReminderLogLine(event, sourceId) {
   const summary = event?.summary || "Untitled reminder";
   const start = event?.start || "unknown time";
-  return `  🕒 [${sourceId}] deadline reminder ${summary} (${start})`;
+  return `  🕒 deadline reminder ${summary} (${start})`;
 }
 
 /**
@@ -81,7 +81,7 @@ async function syncPortalSources(browser, portalSourceIds) {
       // login interstitial) doesn't discard schedules already fetched from
       // other sources.
       const message = err instanceof Error ? err.message : String(err);
-      console.warn(`⚠️  [${sourceId}] skipped: ${message}`);
+      console.warn(`⚠️  skipped: ${message}`);
     } finally {
       await page.close();
     }

@@ -190,7 +190,7 @@ export async function storeIatse927Message(body) {
 
   try {
     const { appended, id } = await appendMessage(text, { messageId });
-    console.log(`ℹ️  [${sourceId}] Message stored: appended=${appended}, id=${id}`);
+    console.log(`ℹ️  Message stored: appended=${appended}, id=${id}`);
     return { stored: appended, id };
   } catch (err) {
     if (isFirestoreNotFoundError(err)) {

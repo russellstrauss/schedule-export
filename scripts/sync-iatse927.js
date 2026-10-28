@@ -15,7 +15,7 @@ async function main() {
   const { synced, parsed, warnings } = result;
   console.log(`✅ IATSE sync complete: ${synced} calendar event(s) from ${parsed} parsed shift(s)`);
   if (warnings.length > 0) {
-    console.log(`ℹ️  [iatse927] ${warnings.length} validation warning(s)`);
+    console.log(`ℹ️  ${warnings.length} validation warning(s)`);
   }
 }
 

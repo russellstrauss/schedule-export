@@ -14,13 +14,15 @@ import {
  * @param {import("puppeteer").Page} page
  */
 async function loginAndOpenDashboard(page, creds) {
-  // networkidle2 never settles here: the portal keeps connections open, and
-  // request blocking for images and fonts leaves the navigation hanging.
+  // The portal keeps connections open, so network-idle waits run out their
+  // whole timeout. The login form and dashboard headings are the ready checks.
   await gotoPortalPage(page, creds.loginUrl);
 
   // Try a set of selectors for the email and password fields to be resilient
   // to portal markup/placeholder changes. Use the first selector that exists.
   const emailSelectors = [
+    "#UserName",
+    'input[name="UserName"]',
     'input[placeholder="Email Address..."]',
     'input[placeholder*="Email"]',
     'input[type="email"]',
@@ -82,7 +84,6 @@ async function loginAndOpenDashboard(page, creds) {
       { timeout: 30000 }
     )
     .catch(() => {});
-  await page.waitForNetworkIdle({ idleTime: 500, timeout: 30000 }).catch(() => {});
 
   const pathname = new URL(page.url()).pathname;
   if (/bgcheck/i.test(pathname)) {
@@ -480,7 +481,7 @@ async function scrapeEventDetail(page) {
  */
 async function fetchEventDetail(page, detailUrl, cache) {
   if (cache.has(detailUrl)) return cache.get(detailUrl);
-  await page.goto(detailUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+  await gotoPortalPage(page, detailUrl);
   await page
     .waitForFunction(() => (document.body?.innerText || "").trim().length > 40, { timeout: 30000 })
     .catch(() => {});
@@ -552,7 +553,6 @@ export async function fetchSchedule(page) {
       const base = creds.loginUrl.replace(/\/$/, "");
       const listUrl = new URL('/view_upcoming', base).toString();
       await gotoPortalPage(page, listUrl);
-      await page.waitForNetworkIdle({ idleTime: 500, timeout: 10000 }).catch(() => {});
       // The dedicated upcoming-calls page may not repeat the dashboard heading,
       // so only that page may scan all tables as a fallback. On the dashboard,
       // doing so can misclassify the open-offers table as accepted calls.
@@ -600,7 +600,7 @@ export async function fetchSchedule(page) {
     }
     if (rowObj.section === "offers" && offerState === "pending" && !offerDeadlineText) {
       console.warn(
-        `[crewOne] No offer deadline text for ${rowObj.event}` +
+        `No offer deadline text for ${rowObj.event}` +
           (rowObj.detailUrl ? ` (${rowObj.detailUrl})` : "") +
           " — deadline reminder will not be created"
       );
@@ -666,7 +666,7 @@ export async function fetchSchedule(page) {
       String(rowObj.dateTime).trim() !== "" &&
       !isCrewOneActionCell(rowObj.dateTime)
     ) {
-      console.warn(`[crewOne] Could not parse date/time: "${rowObj.dateTime}" for ${rowObj.event}`);
+      console.warn(`Could not parse date/time: "${rowObj.dateTime}" for ${rowObj.event}`);
     }
   }
 

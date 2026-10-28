@@ -14,8 +14,9 @@ export const DEFAULT_TIMEZONE = "America/New_York";
 
 export const UPCOMING_PAGE_SIZE = 40;
 // Day rows, not shifts. The next request starts on the newest day already
-// loaded, so each full page adds about one page of new days. 120 pages is
-// about twelve years. A shorter cap aborted real upcoming lists.
+// loaded, so each full page adds about one page of new days. One year of
+// those pages is about ten requests. The page cap only stops a cursor that
+// never reaches that year.
 export const UPCOMING_MAX_PAGES = 120;
 
 /** @returns {string[]} */
@@ -126,9 +127,9 @@ export function roleIdentity(role) {
 }
 
 /**
- * accepted shifts are booked. pending shifts are still on the upcoming
- * calendar (invitations, applications, reserve list). declined shifts were
- * cancelled or turned down.
+ * approved shifts are booked on the crew calendar. pending shifts are
+ * invitations, applications, or the reserve list and are not scheduled.
+ * declined shifts were cancelled or turned down.
  * @param {any} role
  * @returns {"accepted" | "pending" | "declined"}
  */
@@ -138,6 +139,11 @@ export function classifyTechnicalElementsOffer(role) {
   if (status.includes("cancel") || status === "declined" || status === "deleted") return "declined";
   if (status === "approved") return "accepted";
   return "pending";
+}
+
+/** Only booked shifts belong on the Google calendar. */
+export function isScheduledTechnicalElementsRole(role) {
+  return classifyTechnicalElementsOffer(role) === "accepted";
 }
 
 /** @param {any} body */
@@ -185,14 +191,60 @@ function newestDayYmd(dates) {
 }
 
 /**
- * Walk upcoming pages until the last day page.
+ * @param {Date} referenceDate
+ * @param {string} timeZone
+ */
+function zonedYmd(referenceDate, timeZone) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(referenceDate);
+}
+
+/**
+ * @param {string} ymd
+ * @param {number} years
+ */
+function addCalendarYears(ymd, years) {
+  const [year, month, day] = ymd.split("-").map(Number);
+  const utc = new Date(Date.UTC(year + years, month - 1, day));
+  return utc.toISOString().slice(0, 10);
+}
+
+/**
+ * Last calendar day the upcoming sync needs, one year from today in the
+ * schedule timezone. Shifts after this day are outside the snapshot.
+ * @param {Date} [referenceDate]
+ * @param {string} [timeZone]
+ */
+export function upcomingHorizonYmd(referenceDate = new Date(), timeZone = DEFAULT_TIMEZONE) {
+  return addCalendarYears(zonedYmd(referenceDate, timeZone), 1);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function totalJobCount(value) {
+  const total = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(total) || total < 0) return null;
+  return total;
+}
+
+/**
+ * Walk upcoming pages through one year from today.
+ * The LiveForce day grid continues for years after that, so a full page of
+ * days is not evidence that more shifts remain.
  * `fetchPage` returns `{ ok, status, body }`.
  * @param {(query: { offset: string | null; perPage: number }) => Promise<{ ok?: boolean; status?: number; body?: any }>} fetchPage
- * @param {{ perPage?: number; maxPages?: number }} [options]
+ * @param {{ perPage?: number; maxPages?: number; horizonYmd?: string }} [options]
  */
 export async function collectUpcomingRoles(fetchPage, options = {}) {
   const perPage = options.perPage ?? UPCOMING_PAGE_SIZE;
   const maxPages = options.maxPages ?? UPCOMING_MAX_PAGES;
+  const horizon = options.horizonYmd || upcomingHorizonYmd();
   const seen = new Set();
   /** @type {any[]} */
   const roles = [];
@@ -233,6 +285,8 @@ export async function collectUpcomingRoles(fetchPage, options = {}) {
 
     let added = 0;
     for (const day of dates) {
+      const ymd = toYmd(day?.date);
+      if (ymd && ymd > horizon) continue;
       for (const role of day?.roles || []) {
         const id = roleIdentity(role);
         if (seen.has(id)) continue;
@@ -242,7 +296,13 @@ export async function collectUpcomingRoles(fetchPage, options = {}) {
       }
     }
 
+    const totalJobs = totalJobCount(data.totalJobs);
+    if (totalJobs != null && roles.length >= totalJobs) return roles;
+
     if (dates.length < perPage) return roles;
+
+    const newest = newestDayYmd(dates);
+    if (newest && newest >= horizon) return roles;
 
     const nextOffset = newestDayYmd(dates);
     if (!nextOffset || (offset !== null && nextOffset <= offset)) {

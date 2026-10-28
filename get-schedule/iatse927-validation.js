@@ -238,7 +238,7 @@ export function omitPastEventWarnings(warnings, referenceDate = new Date(), time
 export function formatValidationReport(warnings) {
   if (warnings.length === 0) return;
   console.warn(
-    `⚠️  [iatse927] Validation report (${warnings.length} warning(s)):\n` +
+    `⚠️  Validation report (${warnings.length} warning(s)):\n` +
       warnings.map((w) => `  - [${w.code}] ${w.message}`).join("\n")
   );
 }

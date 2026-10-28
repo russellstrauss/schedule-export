@@ -7,9 +7,11 @@ export {
   missingCredentialEnvVars,
   getCredentials,
   classifyTechnicalElementsOffer,
+  isScheduledTechnicalElementsRole,
   mapTechnicalElementsRole,
   collectUpcomingRoles,
   UPCOMING_MAX_PAGES,
+  upcomingHorizonYmd,
   zonedPartsFromIso
 } from "./technicalElements-parse.js";
 export { fetchSchedule } from "./technicalElements-scrape.js";

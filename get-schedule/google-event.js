@@ -112,8 +112,7 @@ export const toGoogleEvent = (entry, options = {}) => {
   const formattedTime = formatTimeForTitle(startTimeStr);
 
   const isOfferUnconfirmed =
-    (source === "crewOne" || source === technicalElementsSourceId) &&
-    String(entry.offerState || "").toLowerCase() === "pending";
+    source === "crewOne" && String(entry.offerState || "").toLowerCase() === "pending";
 
   let summary;
   const sourceDisplayName = getSourceDisplayName(source);
@@ -198,7 +197,7 @@ export function logAndMapEvents(entries, sourceId, options = {}) {
       sourceId === "iatse927"
         ? `${formatTimeForTitle(entry.callTime)} ${iatse927EventTitle(entry)}`
         : googleEvents[index].summary;
-    console.log(`  ✅ [${sourceId}] ${entry.date} ${logSummary}`);
+    console.log(`  ✅ ${entry.date} ${logSummary}`);
   });
 
   return googleEvents;
