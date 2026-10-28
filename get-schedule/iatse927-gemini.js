@@ -4,7 +4,8 @@ import { sourceId } from "./sources/iatse927.js";
 import {
   validateAllEntries,
   validateEvidence,
-  formatValidationReport
+  formatValidationReport,
+  omitPastEventWarnings
 } from "./iatse927-validation.js";
 import { expandDualTimeCallEntries } from "./iatse927-call-expander.js";
 import { buildGeminiContextPayload } from "./iatse927-message-context.js";
@@ -108,6 +109,7 @@ Before returning, double-check every entry against the full thread:
 - Single-time confirms after "load in filled" / "load out only" → one entry of the correct type.
 - Remove shifts contradicted by corrections or declines; remove duplicates.
 - Put issues you notice in warnings (codes: WEAK_EVIDENCE, CONTRADICTION, DUPLICATE, MISSED_DECLINE) but still return corrected entries.
+- Warn only about shifts on today's date or later in ${DEFAULT_TIMEZONE}. Omit warnings for earlier dates, and include the full MM/DD/YYYY date in each warning you do return.
 
 Return { entries, warnings }.`;
 
@@ -308,7 +310,11 @@ export async function resolveScheduleEntriesWithValidation(messages) {
 
   const shapeWarnings = validateAllEntries(entries);
   const evidenceWarnings = validateEvidence(entries, messages);
-  const warnings = [...geminiWarnings, ...shapeWarnings, ...evidenceWarnings];
+  const warnings = omitPastEventWarnings([
+    ...geminiWarnings,
+    ...shapeWarnings,
+    ...evidenceWarnings
+  ]);
 
   for (const w of warnings) {
     console.warn(`⚠️  [${sourceId}] ${w.code}: ${w.message}`);

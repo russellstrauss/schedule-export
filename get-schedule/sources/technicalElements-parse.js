@@ -14,9 +14,9 @@ export const DEFAULT_TIMEZONE = "America/New_York";
 
 export const UPCOMING_PAGE_SIZE = 40;
 // Day rows, not shifts. The next request starts on the newest day already
-// loaded, so each full page adds about one page of new days. Forty pages
-// covers a multi-year calendar; a shorter cap aborted real upcoming lists.
-export const UPCOMING_MAX_PAGES = 40;
+// loaded, so each full page adds about one page of new days. 120 pages is
+// about twelve years. A shorter cap aborted real upcoming lists.
+export const UPCOMING_MAX_PAGES = 120;
 
 /** @returns {string[]} */
 export function missingCredentialEnvVars() {
@@ -198,6 +198,10 @@ export async function collectUpcomingRoles(fetchPage, options = {}) {
   const roles = [];
   /** @type {string | null} */
   let offset = null;
+  /** @type {string | null} */
+  let spanStart = null;
+  /** @type {string | null} */
+  let spanEnd = null;
 
   for (let pageIndex = 0; pageIndex < maxPages; pageIndex++) {
     const result = await fetchPage({ offset, perPage });
@@ -220,6 +224,13 @@ export async function collectUpcomingRoles(fetchPage, options = {}) {
     const dates = Array.isArray(data.dates) ? data.dates : [];
     if (dates.length === 0) return roles;
 
+    for (const day of dates) {
+      const ymd = toYmd(day?.date);
+      if (!ymd) continue;
+      if (!spanStart || ymd < spanStart) spanStart = ymd;
+      if (!spanEnd || ymd > spanEnd) spanEnd = ymd;
+    }
+
     let added = 0;
     for (const day of dates) {
       for (const role of day?.roles || []) {
@@ -241,8 +252,10 @@ export async function collectUpcomingRoles(fetchPage, options = {}) {
     offset = nextOffset;
   }
 
+  const span =
+    spanStart && spanEnd ? ` (${spanStart} through ${spanEnd}, ${roles.length} shifts)` : "";
   throw new Error(
-    `Technical Elements calendar fetch stopped before the last page after ${maxPages} pages.`
+    `Technical Elements calendar fetch stopped before the last page after ${maxPages} pages${span}.`
   );
 }
 

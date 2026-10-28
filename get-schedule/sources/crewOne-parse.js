@@ -129,6 +129,13 @@ export function isCrewOneActionCell(text) {
   return /^(respond|info|view details)$/i.test(String(text || "").trim());
 }
 
+/** Section titles on the Crew One dashboard, not show names. */
+export function isCrewOneDashboardHeading(text) {
+  return /^(upcoming calls|offers needing your response|events worked|most recent payments)$/i.test(
+    String(text || "").trim()
+  );
+}
+
 /**
  * Map Crew One dashboard table cells using headers when available.
  * Upcoming: Event | Where | Date/Time | info

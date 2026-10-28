@@ -301,7 +301,7 @@ describe("technical elements upcoming pages", () => {
   });
 
   it("covers a multi-year day list before treating the snapshot as incomplete", () => {
-    expect(UPCOMING_MAX_PAGES).toBeGreaterThanOrEqual(40);
+    expect(UPCOMING_MAX_PAGES).toBe(120);
   });
 
   it("stops when a page is shorter than the requested day count", async () => {
@@ -335,7 +335,7 @@ describe("technical elements upcoming pages", () => {
         }),
         { perPage: 1, maxPages: 1 }
       )
-    ).rejects.toThrow(/stopped before the last page/);
+    ).rejects.toThrow(/stopped before the last page after 1 pages \(2026-06-16 through 2026-06-16, 1 shifts\)/);
   });
 
   it("raises the portal error when the calendar request fails", async () => {

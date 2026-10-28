@@ -8,6 +8,7 @@ export {
   parseCrewOneOfferDeadline,
   parseCrewOneOfferState,
   isCrewOneActionCell,
+  isCrewOneDashboardHeading,
   mapCrewOneDashboardRow,
   isCrewOneOfferUnconfirmed,
   isCrewOneOfferDeclined,
