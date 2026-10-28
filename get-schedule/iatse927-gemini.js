@@ -109,7 +109,7 @@ Before returning, double-check every entry against the full thread:
 - Single-time confirms after "load in filled" / "load out only" → one entry of the correct type.
 - Remove shifts contradicted by corrections or declines; remove duplicates.
 - Put issues you notice in warnings (codes: WEAK_EVIDENCE, CONTRADICTION, DUPLICATE, MISSED_DECLINE) but still return corrected entries.
-- Warn only about shifts on today's date or later in ${DEFAULT_TIMEZONE}. Omit warnings for earlier dates, and include the full MM/DD/YYYY date in each warning you do return.
+- Do not warn about a shift before today in ${DEFAULT_TIMEZONE}. That includes a reminder that mentions an unconfirmed call on a past date. When you do warn, include the full MM/DD/YYYY show date.
 
 Return { entries, warnings }.`;
 
@@ -398,11 +398,12 @@ export async function resolveScheduleEntriesWithValidation(messages) {
 
   const shapeWarnings = validateAllEntries(entries);
   const evidenceWarnings = validateEvidence(entries, messages);
-  const warnings = omitPastEventWarnings([
-    ...geminiWarnings,
-    ...shapeWarnings,
-    ...evidenceWarnings
-  ]);
+  const warnings = omitPastEventWarnings(
+    [...geminiWarnings, ...shapeWarnings, ...evidenceWarnings],
+    new Date(),
+    DEFAULT_TIMEZONE,
+    messages
+  );
 
   for (const w of warnings) {
     console.warn(`⚠️  ${w.code}: ${w.message}`);

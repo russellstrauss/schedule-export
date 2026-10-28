@@ -99,6 +99,36 @@ describe("omitPastEventWarnings", () => {
     expect(warnings).toHaveLength(0);
   });
 
+  it("drops a past-show warning that also mentions today or cites those messages", () => {
+    const warnings = omitPastEventWarnings(
+      [
+        {
+          code: "WEAK_EVIDENCE",
+          message:
+            "Reminder message 40 mentions a 10PM Load-Out for Need To Breathe on 9/19, but only the 11AM Load-In was confirmed in message 39. Checked 10/28/2026."
+        },
+        {
+          code: "WEAK_EVIDENCE",
+          message: "Reminder message 40 mentions a load-out that was not confirmed in message 39."
+        },
+        {
+          code: "WEAK_EVIDENCE",
+          date: "10/28/2026",
+          message: "Unconfirmed load-out was not scheduled."
+        }
+      ],
+      NOW,
+      "America/New_York",
+      [
+        ...Array.from({ length: 39 }, () => ({ text: "unrelated" })),
+        { text: "Confirmed 9/19 11AM load in" },
+        { text: "Reminder 9/19 11AM load in and 10PM load out Need To Breathe" }
+      ]
+    );
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toBe("Unconfirmed load-out was not scheduled.");
+  });
+
   it("keeps a warning about an upcoming date and a warning with no date", () => {
     const warnings = omitPastEventWarnings(
       [

@@ -3,7 +3,12 @@ import { isEventInFuture, parseScheduleDateParts } from "./schedule-time.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 
 /**
- * @typedef {{ code: string; message: string; entry?: import("./sources/types.js").ScheduleEntry }} ValidationWarning
+ * @typedef {{
+ *   code: string;
+ *   message: string;
+ *   date?: string;
+ *   entry?: import("./sources/types.js").ScheduleEntry
+ * }} ValidationWarning
  */
 
 const MONTH_NUMBERS = {
@@ -197,17 +202,43 @@ export function datesMentionedInWarning(message, referenceDate = new Date(), tim
 }
 
 /**
+ * Dates the warning is actually about: the prose, the structured date field,
+ * and any SMS it cites as "message 12".
+ * @param {ValidationWarning} warning
+ * @param {Date} referenceDate
+ * @param {string} timezone
+ * @param {{ text?: string }[]} [messages]
+ */
+function datesForWarning(warning, referenceDate, timezone, messages = []) {
+  /** @type {{ year: number; month: number; day: number }[]} */
+  const dates = datesMentionedInWarning(warning.message || "", referenceDate, timezone);
+  if (typeof warning.date === "string" && warning.date.trim()) {
+    dates.push(...datesMentionedInWarning(warning.date, referenceDate, timezone));
+  }
+
+  for (const match of (warning.message || "").matchAll(/\bmessages?\s+(\d+)\b/gi)) {
+    const text = messages[Number(match[1])]?.text;
+    if (typeof text === "string" && text.trim()) {
+      dates.push(...datesMentionedInWarning(text, referenceDate, timezone));
+    }
+  }
+  return dates;
+}
+
+/**
  * True when the warning is only about a shift that has already ended.
- * Warnings with no date stay, and a warning that also names a current or
- * upcoming date stays.
+ * Warnings with no date stay. Mentioning today's calendar day does not keep
+ * a warning whose other dates are all in the past. A later show date does.
  * @param {ValidationWarning} warning
  * @param {Date} [referenceDate]
  * @param {string} [timezone]
+ * @param {{ text?: string }[]} [messages]
  */
 export function warningIsAboutPastEvent(
   warning,
   referenceDate = new Date(),
-  timezone = DEFAULT_TIMEZONE
+  timezone = DEFAULT_TIMEZONE,
+  messages = []
 ) {
   const entryDate = warning.entry?.date?.trim();
   if (entryDate && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(entryDate)) {
@@ -218,18 +249,33 @@ export function warningIsAboutPastEvent(
     return !isEventInFuture(year, month, day, hours, minutes, timezone, referenceDate);
   }
 
-  const dates = datesMentionedInWarning(warning.message || "", referenceDate, timezone);
+  const dates = datesForWarning(warning, referenceDate, timezone, messages);
   if (dates.length === 0) return false;
-  return dates.every((date) => !dayHasNotEnded(date.year, date.month, date.day, timezone, referenceDate));
+
+  const ref = zonedCalendarDate(referenceDate, timezone);
+  const isReferenceDay = (date) =>
+    date.year === ref.getFullYear() && date.month === ref.getMonth() + 1 && date.day === ref.getDate();
+  const stillGoing = (date) => dayHasNotEnded(date.year, date.month, date.day, timezone, referenceDate);
+  const earlier = dates.filter((date) => !isReferenceDay(date) && !stillGoing(date));
+  const later = dates.filter((date) => !isReferenceDay(date) && stillGoing(date));
+  if (earlier.length > 0 && later.length === 0) return true;
+
+  return dates.every((date) => !stillGoing(date));
 }
 
 /**
  * @param {ValidationWarning[]} warnings
  * @param {Date} [referenceDate]
  * @param {string} [timezone]
+ * @param {{ text?: string }[]} [messages]
  */
-export function omitPastEventWarnings(warnings, referenceDate = new Date(), timezone = DEFAULT_TIMEZONE) {
-  return warnings.filter((warning) => !warningIsAboutPastEvent(warning, referenceDate, timezone));
+export function omitPastEventWarnings(
+  warnings,
+  referenceDate = new Date(),
+  timezone = DEFAULT_TIMEZONE,
+  messages = []
+) {
+  return warnings.filter((warning) => !warningIsAboutPastEvent(warning, referenceDate, timezone, messages));
 }
 
 /**
