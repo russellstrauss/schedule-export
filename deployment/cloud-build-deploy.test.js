@@ -49,7 +49,7 @@ if [ "\$cmd" = "functions" ] && [ "\$sub" = "describe" ]; then
     exit 0
   fi
   if [ "\$name" = "sync-schedule-develop" ] && [ ! -f "$CAPTURE/develop-exists" ]; then
-    echo "ERROR: (gcloud.functions.describe) NOT_FOUND: function missing" >&2
+    echo "ERROR: (gcloud.functions.describe) ResponseError: status=[404], code=[], message=[Resource was not found]" >&2
     exit 1
   fi
   if [ "\$name" = "sync-schedule-develop" ] && [ -f "$CAPTURE/develop-denied" ]; then
@@ -183,6 +183,20 @@ describe("cloud build deploy", () => {
     expect(deploys[0]).not.toContain("--service-account");
   });
 
+  it("seeds a develop function that only has the platform log variable", () => {
+    const capture = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-platform-env-"));
+    fs.writeFileSync(path.join(capture, "prod.json"), JSON.stringify(prodConfig));
+    fs.writeFileSync(
+      path.join(capture, "develop.json"),
+      JSON.stringify({ serviceConfig: { environmentVariables: { LOG_EXECUTION_ID: "true" } } })
+    );
+    fs.writeFileSync(path.join(capture, "develop-exists"), "");
+    const { deploys } = runDeploy("develop", capture);
+    expect(deploys[0]).toContain("functions deploy sync-schedule-develop ");
+    expect(deploys[0]).toContain("--env-vars-file=");
+    expect(deploys[0]).toContain("--service-account=runtime@appspot.gserviceaccount.com");
+  });
+
   it("retries without copied config when seeding is denied", () => {
     const capture = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-retry-"));
     fs.writeFileSync(path.join(capture, "prod.json"), JSON.stringify(prodConfig));
@@ -230,5 +244,23 @@ describe("develop runtime config", () => {
       { encoding: "utf8" }
     ).trim();
     expect(stdout).toBe("skip");
+  });
+
+  it("seeds when the target only has the platform log variable", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-config-platform-"));
+    const prod = path.join(dir, "prod.json");
+    const target = path.join(dir, "target.json");
+    const envFile = path.join(dir, "env.yaml");
+    fs.writeFileSync(prod, JSON.stringify(prodConfig));
+    fs.writeFileSync(
+      target,
+      JSON.stringify({ serviceConfig: { environmentVariables: { LOG_EXECUTION_ID: "true" } } })
+    );
+    const stdout = execFileSync(
+      "python3",
+      [configScript, "--prod-json", prod, "--target-json", target, "--env-file", envFile],
+      { encoding: "utf8" }
+    ).trim();
+    expect(stdout.startsWith("seed ")).toBe(true);
   });
 });

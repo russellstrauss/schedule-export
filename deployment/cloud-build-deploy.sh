@@ -55,23 +55,30 @@ if [ "$FUNCTION_NAME" != "$PROD_FUNCTION" ]; then
   }
   trap cleanup EXIT
 
+  ERR_FILE="$(mktemp)"
   set +e
-  # stdout JSON goes to the file; stderr is captured for NOT_FOUND detection.
-  target_err="$(gcloud functions describe "$FUNCTION_NAME" \
+  gcloud functions describe "$FUNCTION_NAME" \
     --gen2 \
     --project="$PROJECT" \
     --region="$REGION" \
-    --format=json 2>&1 >"$TARGET_JSON")"
+    --format=json >"$TARGET_JSON" 2>"$ERR_FILE"
   target_status=$?
   set -e
+  target_err="$(cat "$ERR_FILE")"
+  rm -f "$ERR_FILE"
 
   seed=false
   if [ "$target_status" -ne 0 ]; then
-    if grep -q "NOT_FOUND" <<<"$target_err"; then
+    # Newer gcloud says "was not found" with status 404. Older gcloud says NOT_FOUND.
+    if grep -Eqi "NOT_FOUND|not found|status=\[404\]" <<<"$target_err" || grep -Eqi "NOT_FOUND|not found|status=\[404\]" "$TARGET_JSON"; then
       echo "{}" >"$TARGET_JSON"
       seed=true
     else
       echo "Could not read ${FUNCTION_NAME}. Deploying without changing its environment variables."
+      first_err="$(sed -n '1p' <<<"$target_err")"
+      if [ -n "$first_err" ]; then
+        echo "$first_err"
+      fi
     fi
   else
     seed=true

@@ -28,11 +28,18 @@ def service_config(doc):
     return config if isinstance(config, dict) else {}
 
 
+# Cloud Functions sets this on its own. It does not mean the app was configured.
+PLATFORM_ENV = {"LOG_EXECUTION_ID"}
+
+
 def configured(doc):
     config = service_config(doc)
     env = config.get("environmentVariables") or {}
     secrets = config.get("secretEnvironmentVariables") or []
-    return bool(env) or bool(secrets)
+    if not isinstance(env, dict):
+        env = {}
+    app_env = {key: value for key, value in env.items() if key not in PLATFORM_ENV}
+    return bool(app_env) or bool(secrets)
 
 
 def yaml_key(key):
