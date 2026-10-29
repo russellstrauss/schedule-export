@@ -115,6 +115,7 @@ describe("cloudbuild config", () => {
     expect(match[1].length).toBeGreaterThan(0);
     expect(match[2]).toBe("us-central1");
     expect(yaml.indexOf("setup-develop-trigger.sh")).toBeLessThan(yaml.indexOf("cloud-build-deploy.sh"));
+    expect(yaml.match(/BRANCH_NAME=\$BRANCH_NAME/g)).toHaveLength(2);
   });
 });
 

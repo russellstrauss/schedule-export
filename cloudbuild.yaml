@@ -5,14 +5,21 @@
 # Branch develop deploys sync-schedule-develop, a separate testing URL.
 # Every other branch, including main, deploys sync-schedule.
 # The first step makes sure pushes to develop start that deploy.
+# BRANCH_NAME is a build substitution, not a step environment variable,
+# unless it is mapped here. Without that mapping every build looks manual
+# and deploys the production function.
 steps:
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
+    env:
+      - BRANCH_NAME=$BRANCH_NAME
     args:
       - -c
       - ENSURE_TRIGGER_OPTIONAL=1 bash deployment/setup-develop-trigger.sh
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
+    env:
+      - BRANCH_NAME=$BRANCH_NAME
     args:
       - deployment/cloud-build-deploy.sh
       - rhino-schedule-sync # // pragma: allowlist secret
