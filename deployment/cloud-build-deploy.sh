@@ -4,9 +4,10 @@
 # develop -> sync-schedule-develop (separate testing URL)
 # any other branch, including main -> sync-schedule
 #
-# The first develop deploy copies plain environment variables and Secret
-# Manager bindings from production. Later deploys leave that function's
-# environment in place. Develop is not added to Cloud Scheduler.
+# The first develop deploy copies plain environment variables, Secret
+# Manager bindings, and the runtime service account from production.
+# Later deploys leave that function's environment in place. Develop is
+# not added to Cloud Scheduler.
 
 set -euo pipefail
 
@@ -108,7 +109,24 @@ if [ "$FUNCTION_NAME" != "$PROD_FUNCTION" ]; then
             echo "Copying ${secret_count} Secret Manager bindings from ${PROD_FUNCTION}."
             DEPLOY+=(--set-secrets="$secrets")
           fi
-          if [ "$env_count" != "0" ] || { [ -n "$secrets" ] && [ "$secrets" != "-" ]; }; then
+          service_account="$(python3 - "$PROD_JSON" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    doc = json.load(handle)
+config = doc.get("serviceConfig") if isinstance(doc, dict) else {}
+if not isinstance(config, dict):
+    config = {}
+email = config.get("serviceAccountEmail") or ""
+print(email if isinstance(email, str) else "")
+PY
+)"
+          if [ -n "$service_account" ]; then
+            echo "Copying runtime service account from ${PROD_FUNCTION}."
+            DEPLOY+=(--service-account="$service_account")
+          fi
+          if [ "$env_count" != "0" ] || { [ -n "$secrets" ] && [ "$secrets" != "-" ]; } || [ -n "$service_account" ]; then
             SEEDED=true
           fi
         else

@@ -84,7 +84,7 @@ def main():
             value = "" if value is None else str(value)
         lines.append(f"{yaml_key(key)}: {json.dumps(value)}")
 
-    with open(args.env_file, "w", encoding="utf-8") as handle:
+    with open(args.env_file, "w", encoding="utf-8", newline="\n") as handle:
         if lines:
             handle.write("\n".join(lines))
             handle.write("\n")

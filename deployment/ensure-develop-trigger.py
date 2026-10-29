@@ -33,6 +33,10 @@ OUTPUT_ONLY = {
 
 
 def run(args):
+    # Windows Python cannot CreateProcess a gcloud.cmd shim. cmd.exe can.
+    # Cloud Build is Linux and keeps the direct exec.
+    if os.name == "nt":
+        return subprocess.run(args, text=True, capture_output=True, shell=True)
     return subprocess.run(args, text=True, capture_output=True)
 
 
@@ -53,6 +57,9 @@ def branch_patterns(trigger):
     event_push = (trigger.get("repositoryEventConfig") or {}).get("push") or {}
     if event_push.get("branch"):
         patterns.append(event_push["branch"])
+    connect_push = (trigger.get("developerConnectEventConfig") or {}).get("push") or {}
+    if connect_push.get("branch"):
+        patterns.append(connect_push["branch"])
     template = trigger.get("triggerTemplate") or {}
     if template.get("branchName"):
         patterns.append(template["branchName"])
@@ -71,6 +78,8 @@ def set_branch(trigger, pattern):
         trigger.setdefault("github", {}).setdefault("push", {})["branch"] = pattern
     if trigger.get("repositoryEventConfig"):
         trigger.setdefault("repositoryEventConfig", {}).setdefault("push", {})["branch"] = pattern
+    if trigger.get("developerConnectEventConfig"):
+        trigger.setdefault("developerConnectEventConfig", {}).setdefault("push", {})["branch"] = pattern
     if trigger.get("triggerTemplate"):
         trigger["triggerTemplate"]["branchName"] = pattern
 

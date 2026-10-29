@@ -17,10 +17,10 @@ const productionTrigger = {
   serviceAccount:
     "projects/gen-lang-client-0523900922/serviceAccounts/builder@gen-lang-client-0523900922.iam.gserviceaccount.com",
   includedFiles: ["main.js"],
-  repositoryEventConfig: {
-    repository:
-      "projects/gen-lang-client-0523900922/locations/northamerica-northeast2/connections/schedule/gitRepositoryLinks/schedule-export",
-    repositoryType: "GITHUB",
+  developerConnectEventConfig: {
+    gitRepositoryLink:
+      "projects/gen-lang-client-0523900922/locations/northamerica-northeast2/connections/GitHub/gitRepositoryLinks/russellstrauss-schedule-export",
+    gitRepositoryLinkType: "GITHUB",
     push: { branch: "^main$" }
   }
 };
@@ -82,6 +82,12 @@ exit 1
 `
   );
   fs.chmodSync(gcloud, 0o755);
+  if (process.platform === "win32") {
+    fs.writeFileSync(
+      path.join(binDir, "gcloud.cmd"),
+      `@echo off\r\nbash "%~dp0gcloud" %*\r\n`
+    );
+  }
 }
 
 function runSetup(capture, env = {}) {
@@ -94,7 +100,7 @@ function runSetup(capture, env = {}) {
       cwd: root,
       env: {
         ...process.env,
-        PATH: `${binDir}:${process.env.PATH}`,
+        PATH: [binDir, process.env.PATH].filter(Boolean).join(path.delimiter),
         CAPTURE: capture,
         ...env
       },
@@ -117,9 +123,9 @@ describe("develop Cloud Build trigger", () => {
     const imported = JSON.parse(fs.readFileSync(path.join(capture, "imported.json"), "utf8"));
     expect(imported.name).toBe("push-develop-schedule-sync");
     expect(imported.filename).toBe("cloudbuild.yaml");
-    expect(imported.repositoryEventConfig.push.branch).toBe("^develop$");
-    expect(imported.repositoryEventConfig.repository).toBe(
-      productionTrigger.repositoryEventConfig.repository
+    expect(imported.developerConnectEventConfig.push.branch).toBe("^develop$");
+    expect(imported.developerConnectEventConfig.gitRepositoryLink).toBe(
+      productionTrigger.developerConnectEventConfig.gitRepositoryLink
     );
     expect(imported.serviceAccount).toBe(productionTrigger.serviceAccount);
     expect(imported.createTime).toBeUndefined();
@@ -140,7 +146,7 @@ describe("develop Cloud Build trigger", () => {
         {
           name: "push-develop-schedule-sync",
           filename: "cloudbuild.yaml",
-          repositoryEventConfig: {
+          developerConnectEventConfig: {
             push: { branch: "^develop$" }
           }
         }

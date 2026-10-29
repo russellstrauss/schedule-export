@@ -11,6 +11,7 @@ const configScript = path.join(root, "deployment/develop-runtime-config.py");
 
 const prodConfig = {
   serviceConfig: {
+    serviceAccountEmail: "runtime@appspot.gserviceaccount.com",
     environmentVariables: {
       SCHEDULE_SOURCES: "portal-a,portal-b",
       NOTE: 'say "hi"\nnext'
@@ -142,6 +143,7 @@ describe("cloud build deploy", () => {
     expect(deploys[0]).not.toContain("sync-schedule-develop");
     expect(deploys[0]).not.toContain("--env-vars-file");
     expect(deploys[0]).not.toContain("--set-secrets");
+    expect(deploys[0]).not.toContain("--service-account");
     expect(stdout).toContain("Function URL: https://sync-schedule-example-uc.a.run.app");
   });
 
@@ -152,6 +154,7 @@ describe("cloud build deploy", () => {
     expect(deploys).toHaveLength(1);
     expect(deploys[0]).toContain("functions deploy sync-schedule-develop ");
     expect(deploys[0]).toContain("--env-vars-file=");
+    expect(deploys[0]).toContain("--service-account=runtime@appspot.gserviceaccount.com");
     expect(deploys[0]).not.toContain("--project=sync-schedule ");
     const envYaml = fs.readFileSync(path.join(capture, "env.yaml"), "utf8");
     expect(envYaml).toBe(
@@ -176,6 +179,7 @@ describe("cloud build deploy", () => {
     expect(deploys[0]).toContain("functions deploy sync-schedule-develop ");
     expect(deploys[0]).not.toContain("--env-vars-file");
     expect(deploys[0]).not.toContain("--set-secrets");
+    expect(deploys[0]).not.toContain("--service-account");
   });
 
   it("retries without copied config when seeding is denied", () => {
@@ -185,8 +189,10 @@ describe("cloud build deploy", () => {
     const { stdout, deploys } = runDeploy("develop", capture);
     expect(deploys).toHaveLength(2);
     expect(deploys[0]).toContain("--set-secrets=");
+    expect(deploys[0]).toContain("--service-account=runtime@appspot.gserviceaccount.com");
     expect(deploys[1]).not.toContain("--set-secrets");
     expect(deploys[1]).not.toContain("--env-vars-file");
+    expect(deploys[1]).not.toContain("--service-account");
     expect(deploys[1]).toContain("functions deploy sync-schedule-develop ");
     expect(stdout).toContain("Retrying without environment changes");
     expect(stdout).toContain("https://sync-schedule-develop-example-uc.a.run.app");
