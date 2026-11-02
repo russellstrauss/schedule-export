@@ -70,28 +70,14 @@ const geminiResponse = JSON.stringify({
 
 
 
-vi.mock("@google/generative-ai", () => ({
-
-  GoogleGenerativeAI: class MockGoogleGenerativeAI {
-
-    constructor() {}
-
-    getGenerativeModel() {
-
-      return {
-
-        generateContent: async () => ({
-
-          response: { text: () => geminiResponse }
-
-        })
-
+vi.mock("@google/genai", () => ({
+  GoogleGenAI: class MockGoogleGenAI {
+    constructor() {
+      this.models = {
+        generateContent: async () => ({ text: geminiResponse })
       };
-
     }
-
   }
-
 }));
 
 
@@ -108,7 +94,11 @@ import {
 
   isGeminiNetworkError,
 
-  geminiErrorDetail
+  geminiErrorDetail,
+
+  describeGeminiCredentialIssue,
+
+  isGeminiAuthError
 
 } from "./iatse927-gemini.js";
 
@@ -148,6 +138,11 @@ describe("extractScheduleEntriesWithGemini", () => {
 
     ).rejects.toThrow(/GEMINI_API_KEY/);
 
+  });
+
+  it("rejects OAuth tokens mistaken for GEMINI_API_KEY", async () => {
+    process.env.GEMINI_API_KEY = "ya29.test-access-token";
+    await expect(extractScheduleEntriesWithGemini([{ text: "hi" }])).rejects.toThrow(/OAuth token/);
   });
 
 
@@ -251,6 +246,18 @@ describe("resolveScheduleEntriesWithValidation", () => {
 });
 
 
+
+describe("gemini credential helpers", () => {
+  it("detects OAuth-shaped keys", () => {
+    expect(describeGeminiCredentialIssue("ya29.abc")).toMatch(/OAuth token/);
+    expect(describeGeminiCredentialIssue("AIzaSy-test")).toBeNull();
+  });
+
+  it("detects auth errors from Gemini responses", () => {
+    expect(isGeminiAuthError(new Error("ACCESS_TOKEN_TYPE_UNSUPPORTED"))).toBe(true);
+    expect(isGeminiAuthError(new Error("quota depleted"))).toBe(false);
+  });
+});
 
 describe("isGeminiUnavailableError", () => {
 

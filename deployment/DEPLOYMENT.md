@@ -137,7 +137,9 @@ IATSE ingest stores message text in Firestore collection `iatse927_messages`. If
      --role="roles/datastore.user"
    ```
 
-3. **Gemini (required):** Create an API key at [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` in `.env` before deploy. On each ingest, the message is stored in Firestore, then **all** stored SMS messages are loaded and sent to Gemini in one pass (extract with built-in double-check against thread context) to parse and merge shifts. The calendar is fully replaced for IATSE events (past and future). If the key is missing or the API fails, ingest returns an error and does not sync the calendar. Free-tier rate limits apply; typical personal SMS volume is fine.
+3. **Gemini (required):** Create an API key at [Google AI Studio](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY` in `.env` before deploy (Secret Manager binding in production). On each ingest, the message is stored in Firestore, then **all** stored SMS messages are loaded and sent to Gemini in one pass (extract with built-in double-check against thread context) to parse and merge shifts. The calendar is fully replaced for IATSE events (past and future). If the key is missing or the API fails, ingest returns an error and does not sync the calendar. Free-tier rate limits apply; typical personal SMS volume is fine.
+
+   **Cloud Function auth fallback:** If `GEMINI_API_KEY` is missing, malformed (for example a pasted OAuth token), or rejected with `401 ACCESS_TOKEN_TYPE_UNSUPPORTED`, the function retries using **Vertex AI** with its service account. Enable the [Vertex AI API](https://console.cloud.google.com/flows/enableapi?apiid=aiplatform.googleapis.com) and grant the function service account `roles/aiplatform.user`. Optional: set `GEMINI_USE_VERTEX=true` to skip the API key entirely in cloud.
 
 4. **Bootstrap historical threads (one-time, local):** Export Google Messages RCS threads to `.txt` files, then:
 
