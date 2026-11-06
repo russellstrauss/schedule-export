@@ -10,13 +10,19 @@ The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 ## Local setup
 
 1. Copy `.env.example` to `.env` and fill in portal credentials, Google OAuth, and (for IATSE) `GEMINI_API_KEY` plus Firestore project. Turn companies on or off in `user-settings.json`. Portal login pages are fixed in the source.
-2. Place Google OAuth `credentials.json` in `get-schedule/google-calendar/` and authorize once:
+2. Google Calendar OAuth — **either**:
+   - **Env only (recommended on Termux / no JSON files):** set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `GOOGLE_TOKEN` (JSON string from a prior authorize flow). You do not need `credentials.json` or `token.json`.
+   - **Or file-based:** place `credentials.json` in `get-schedule/google-calendar/` and authorize once:
 
 ```bash
 node scripts/authorize-calendar.js
 ```
 
-3. Run a full local sync:
+   If `GOOGLE_TOKEN` is not set, successful authorize still writes `token.json` next to `auth.js`.
+
+3. **IATSE only via cloud:** set `"iatse927": false` in `user-settings.json` so local `node sync.js` does not touch Firestore/Gemini. Trigger your deployed function (ingest or full sync) for IATSE. Leave portals enabled as you like.
+
+4. Run a full local sync:
 
 ```bash
 node sync.js

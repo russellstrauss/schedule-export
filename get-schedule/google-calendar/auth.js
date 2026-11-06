@@ -14,14 +14,49 @@ const __dirname = dirname(__filename);
 const TOKEN_PATH = path.join(__dirname, "token.json");
 const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
 
+/**
+ * True when OAuth client id/secret/redirect are set in the environment (no credentials.json needed).
+ * @returns {boolean}
+ */
+function isOAuthClientFromEnv() {
+	const id = process.env.GOOGLE_CLIENT_ID?.trim();
+	const secret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+	const redirect = process.env.GOOGLE_REDIRECT_URI?.trim();
+	return Boolean(id && secret && redirect);
+}
+
+/**
+ * Load OAuth client config: prefer GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI,
+ * else fall back to credentials.json (installed app).
+ * @returns {{ client_id: string, client_secret: string, redirect_uri: string }}
+ */
 function loadLocalOAuthConfig() {
+	if (isOAuthClientFromEnv()) {
+		return {
+			client_id: process.env.GOOGLE_CLIENT_ID.trim(),
+			client_secret: process.env.GOOGLE_CLIENT_SECRET.trim(),
+			redirect_uri: process.env.GOOGLE_REDIRECT_URI.trim()
+		};
+	}
 	if (!fs.existsSync(CREDENTIALS_PATH)) {
-		throw new Error(`Credentials file not found at ${CREDENTIALS_PATH}`);
+		throw new Error(
+			`OAuth client not configured: set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in .env, ` +
+				`or place Desktop OAuth credentials at ${CREDENTIALS_PATH}`
+		);
 	}
 	const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
 	const { client_secret, client_id } = credentials.installed;
 	const redirect_uri = credentials.installed.redirect_uris[0];
 	return { client_id, client_secret, redirect_uri };
+}
+
+/**
+ * Local runs: token from GOOGLE_TOKEN env (JSON string) if set, else token.json.
+ * When using env-only tokens, refreshed credentials are not written to disk.
+ * @returns {boolean}
+ */
+function shouldPersistLocalTokenToFile() {
+	return !process.env.GOOGLE_TOKEN?.trim();
 }
 
 function createOAuthClient(client_id, client_secret, redirect_uri) {
@@ -37,8 +72,14 @@ export async function exchangeOAuthCode(code) {
 	const oAuth2Client = createOAuthClient(client_id, client_secret, redirect_uri);
 	const { tokens } = await oAuth2Client.getToken(code);
 	oAuth2Client.setCredentials(tokens);
-	fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
-	console.log("Authentication successful! Token saved to token.json");
+	if (shouldPersistLocalTokenToFile()) {
+		fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+		console.log("Authentication successful! Token saved to token.json");
+	} else {
+		console.log(
+			"Authentication successful! Using GOOGLE_TOKEN from env — copy the refreshed value if you change clients."
+		);
+	}
 	return oAuth2Client;
 }
 
@@ -83,14 +124,18 @@ export async function authorize() {
 	let client_id, client_secret, redirect_uri, tokens;
 
 	if (isLocal) {
-		if (!fs.existsSync(CREDENTIALS_PATH)) {
-			throw new Error(`Credentials file not found at ${CREDENTIALS_PATH}`);
-		}
-		const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
-		({ client_secret, client_id } = credentials.installed);
-		redirect_uri = credentials.installed.redirect_uris[0];
+		const localCfg = loadLocalOAuthConfig();
+		client_id = localCfg.client_id;
+		client_secret = localCfg.client_secret;
+		redirect_uri = localCfg.redirect_uri;
 
-		if (fs.existsSync(TOKEN_PATH)) {
+		if (process.env.GOOGLE_TOKEN?.trim()) {
+			try {
+				tokens = JSON.parse(process.env.GOOGLE_TOKEN);
+			} catch {
+				throw new Error("Invalid GOOGLE_TOKEN environment variable. Expected JSON string.");
+			}
+		} else if (fs.existsSync(TOKEN_PATH)) {
 			tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
 		}
 	} else {
@@ -118,31 +163,34 @@ export async function authorize() {
 	if (tokens) {
 		oAuth2Client.setCredentials(tokens);
 
-		oAuth2Client.on('tokens', (newTokens) => {
+		oAuth2Client.on("tokens", (newTokens) => {
 			if (newTokens.refresh_token) {
 				tokens.refresh_token = newTokens.refresh_token;
-				console.log('🔄 New refresh token received');
+				console.log("🔄 New refresh token received");
 			}
 			tokens.access_token = newTokens.access_token;
 			tokens.expiry_date = newTokens.expiry_date;
-			
+
 			if (!isLocal) {
-				console.log('🔄 Access token refreshed automatically (expires in ~1 hour)');
-			} else {
-				// In local development, save to file to persist the updated token
+				console.log("🔄 Access token refreshed automatically (expires in ~1 hour)");
+			} else if (shouldPersistLocalTokenToFile()) {
 				try {
 					fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens, null, 2));
-					console.log('💾 Token saved to file');
+					console.log("💾 Token saved to file");
 				} catch (err) {
-					console.error('⚠️  Failed to save updated token:', err.message);
+					console.error("⚠️  Failed to save updated token:", err.message);
 				}
+			} else {
+				console.log(
+					"🔄 Access token refreshed in memory (GOOGLE_TOKEN in use — update .env if you need to persist a new refresh token)"
+				);
 			}
 		});
-		
-		oAuth2Client.on('error', (error) => {
-			console.error('❌ OAuth token error:', error.message);
+
+		oAuth2Client.on("error", (error) => {
+			console.error("❌ OAuth token error:", error.message);
 		});
-		
+
 		return oAuth2Client;
 	}
 

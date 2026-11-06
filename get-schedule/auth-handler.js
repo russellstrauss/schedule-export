@@ -66,7 +66,8 @@ export async function withAuthRetry(auth, fn) {
           "The refresh token stored in GOOGLE_TOKEN environment variable is no longer valid. " +
           "To fix this:\n" +
           "1. Run 'node sync.js' locally to re-authenticate\n" +
-          "2. Copy the new token from get-schedule/google-calendar/token.json\n" +
+          "2. If you use token.json, copy the new token from get-schedule/google-calendar/token.json.\n" +
+          "   If you use env-only OAuth, copy the token JSON into GOOGLE_TOKEN in your .env.\n" +
           "3. Update the GOOGLE_TOKEN environment variable in Cloud Functions using:\n" +
           "   .\\deployment\\update-env-vars.ps1\n" +
           "   Or manually: gcloud functions deploy sync-schedule --gen2 --region=us-central1 --update-env-vars GOOGLE_TOKEN='<new-token-json>'"
@@ -80,10 +81,17 @@ export async function withAuthRetry(auth, fn) {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const TOKEN_PATH = path.join(__dirname, "google-calendar", "token.json");
+    const usingEnvToken = Boolean(process.env.GOOGLE_TOKEN?.trim());
 
     console.log("⚠️  Refresh token expired or revoked. Removing old token and re-authenticating...");
     if (fs.existsSync(TOKEN_PATH)) {
       fs.unlinkSync(TOKEN_PATH);
+    }
+    if (usingEnvToken) {
+      console.log(
+        "ℹ️  GOOGLE_TOKEN is set in the environment. Remove or clear it before re-auth if authorize() still sees the old token, " +
+          "then run authorize again and paste the new JSON into GOOGLE_TOKEN."
+      );
     }
 
     console.log("🔄 Starting OAuth flow to get new refresh token...");
