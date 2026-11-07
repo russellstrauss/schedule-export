@@ -11,6 +11,8 @@ import {
   normalizeCrew1DateTimeText,
   matchDetailCall,
   formatCrewOneEventDescription,
+  parseCrewOneDetailCallsFromText,
+  enrichCrewOneEventDetail,
   parseCrewOneOfferDeadline,
   parseCrewOneOfferState,
   buildCrewOneDeadlineReminderEvent,
@@ -147,6 +149,143 @@ describe("crewOne", () => {
     );
   });
 
+  it("reads the Job/Task column from a confirmed event detail page", () => {
+    const bodyText = [
+      "You Are Scheduled to Work This Event",
+      "THE NEIGHBOURHOOD 2026",
+      "at STATE FARM ARENA",
+      "This is a CONCERT Event.",
+      "John, you are scheduled to work the following dates and times:",
+      "Job/Task \t Start Date/Time \t Contractor Notes for Call \t I Need To...",
+      "STAGEHAND \t Tue Nov 10, 2026 5:00 AM",
+      "STAGEHAND \t Tue Nov 10, 2026 10:00 PM",
+      "NOTE:",
+      "Call Check-In is 30 minutes BEFORE the call's start time."
+    ].join("\n");
+
+    const calls = parseCrewOneDetailCallsFromText(bodyText);
+    expect(calls).toEqual([
+      { job: "STAGEHAND", startDateTime: "Tue Nov 10, 2026 5:00 AM", contractorNotes: "" },
+      { job: "STAGEHAND", startDateTime: "Tue Nov 10, 2026 10:00 PM", contractorNotes: "" }
+    ]);
+
+    const detail = enrichCrewOneEventDetail({
+      eventTypeLine: "This is a CONCERT Event.",
+      venue: "STATE FARM ARENA",
+      calls: [],
+      bodyText
+    });
+    expect(detail.position).toBe("STAGEHAND");
+
+    const morning = toGoogleEvent(
+      {
+        date: "11/10/2026",
+        callTime: "05:00",
+        show: "THE NEIGHBOURHOOD 2026",
+        venue: "STATE FARM ARENA",
+        position: detail.calls[0].job,
+        offerState: "accepted"
+      },
+      { source: "crewOne" }
+    );
+    const night = toGoogleEvent(
+      {
+        date: "11/10/2026",
+        callTime: "22:00",
+        show: "THE NEIGHBOURHOOD 2026",
+        venue: "STATE FARM ARENA",
+        position: detail.calls[1].job,
+        offerState: "accepted"
+      },
+      { source: "crewOne" }
+    );
+    expect(morning.summary).toBe("4:30am (SFA) THE NEIGHBOURHOOD 2026 - STAGEHAND [Crew 1]");
+    expect(night.summary).toBe("9:30pm (SFA) THE NEIGHBOURHOOD 2026 - STAGEHAND [Crew 1]");
+
+    const stacked = parseCrewOneDetailCallsFromText(
+      ["Job/Task", "Start Date/Time", "RIGGER (UP)", "Fri Nov 15, 2026 8:00 AM", "NOTE:"].join("\n")
+    );
+    expect(stacked).toEqual([
+      { job: "RIGGER (UP)", startDateTime: "Fri Nov 15, 2026 8:00 AM", contractorNotes: "" }
+    ]);
+  });
+
+  it("puts the detail page Job/Task on upcoming call titles", async () => {
+    process.env.CREWONE_EMAIL = "a@b.com";
+    process.env.CREWONE_PASSWORD = "secret";
+
+    const bodyText = [
+      "You Are Scheduled to Work This Event",
+      "THE NEIGHBOURHOOD 2026",
+      "at STATE FARM ARENA",
+      "This is a CONCERT Event.",
+      "Job/Task Start Date/Time Contractor Notes for Call",
+      "STAGEHAND Tue Nov 10, 2026 5:00 AM",
+      "STAGEHAND Tue Nov 10, 2026 10:00 PM",
+      "NOTE:"
+    ].join("\n");
+
+    const page = {
+      async goto() {},
+      async waitForFunction() { return true; },
+      async waitForNetworkIdle() {},
+      async $(selector) { return { selector }; },
+      async focus() { return true; },
+      async type() { return true; },
+      url() { return "https://portal.example.test/dashboard"; },
+      evaluate(fn, ...args) {
+        const src = String(fn);
+        if (src.includes("scrollBy")) return Promise.resolve(true);
+        if (src.includes("window.location.pathname")) return Promise.resolve(true);
+        if (src.includes("document.querySelector(s).value = \"\"")) return Promise.resolve(null);
+        if (src.includes("querySelectorAll(\"button\")") || src.includes("querySelectorAll('button')")) {
+          return Promise.resolve(undefined);
+        }
+        if (src.includes("querySelectorAll('table')") && src.includes("detailLink")) {
+          if (/Offers Needing Your Response/i.test(String(args[0] || ""))) {
+            return Promise.resolve([]);
+          }
+          return Promise.resolve([{
+            event: "THE NEIGHBOURHOOD 2026",
+            where: "STATE FARM ARENA",
+            position: "",
+            dateTime: "Tue Nov 10 5:00 AM",
+            detailUrl: "https://portal.example.test/view_upcoming/neighbourhood"
+          }]);
+        }
+        if (src.includes("querySelectorAll(\"h1,h2,h3,h4,h5,h6\")") || src.includes("querySelectorAll('h1,h2,h3,h4,h5,h6')")) {
+          return Promise.resolve([{ textContent: "Upcoming Calls" }]);
+        }
+        if (src.includes("VENUE NOTE") || src.includes("offerDeadlineText") || src.includes("bodyText")) {
+          return Promise.resolve({
+            eventTypeLine: "This is a CONCERT Event.",
+            venue: "STATE FARM ARENA",
+            calls: [],
+            generalNotes: "",
+            venueNotes: "",
+            offerDeadlineText: "",
+            offerState: "accepted",
+            bodyText
+          });
+        }
+        return Promise.resolve(undefined);
+      }
+    };
+
+    const { fetchSchedule } = await import("./crewOne.js");
+    const entries = await fetchSchedule(page);
+    const morning = entries.find((entry) => entry.callTime === "05:00");
+
+    expect(morning).toMatchObject({
+      show: "THE NEIGHBOURHOOD 2026",
+      position: "STAGEHAND",
+      offerState: "accepted"
+    });
+    expect(toGoogleEvent(morning)).toMatchObject({
+      summary: "4:30am (SFA) THE NEIGHBOURHOOD 2026 - STAGEHAND [Crew 1]"
+    });
+  });
+
   it("parseCrewOneOfferState ignores 'will accept your response' copy", () => {
     expect(
       parseCrewOneOfferState(
@@ -222,7 +361,9 @@ describe("crewOne", () => {
           return Promise.resolve({
             eventTypeLine: "This is a CONCERT Event.",
             venue: "",
-            calls: [],
+            calls: [
+              { job: "STAGEHAND", startDateTime: "Fri Oct 2, 2026 8:00 AM", contractorNotes: "" }
+            ],
             generalNotes: "",
             venueNotes: "",
             offerDeadlineText: "This offer closes September 25, 2026 at 9:11 AM",
@@ -236,10 +377,11 @@ describe("crewOne", () => {
     const { fetchSchedule } = await import("./crewOne.js");
     const entries = await fetchSchedule(page);
 
+    expect(entries[0].position).toBe("STAGEHAND");
     expect(entries[0].offerDeadlineText).toBe("This offer closes September 25, 2026 at 9:11 AM");
     expect(entries[0].offerState).toBe("accepted");
     expect(toGoogleEvent(entries[0])).toMatchObject({
-      summary: "7:30am (VENUE) A TEST SHOW [Crew 1]",
+      summary: "7:30am (VENUE) A TEST SHOW - STAGEHAND [Crew 1]",
       status: "confirmed"
     });
     expect(buildCrewOneDeadlineReminderEvent(entries[0])).toBeNull();

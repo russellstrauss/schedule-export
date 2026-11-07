@@ -15,7 +15,10 @@ export {
   buildCrewOneDeadlineReminderEvent,
   OFFER_DEADLINE_REMINDER_LEAD_MINUTES,
   matchDetailCall,
-  formatCrewOneEventDescription
+  formatCrewOneEventDescription,
+  parseCrewOneDetailCallsFromText,
+  enrichCrewOneEventDetail,
+  resolveCrewOnePosition
 } from "./crewOne-parse.js";
 export { fetchSchedule } from "./crewOne-scrape.js";
 
