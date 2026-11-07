@@ -585,6 +585,17 @@ export async function fetchSchedule(page) {
     }
 
     const detail = rowObj.detailUrl ? await fetchEventDetail(page, rowObj.detailUrl, detailCache) : null;
+    
+    // Debug: log when detail page has no calls or no job info
+    if (detail && rowObj.section === "upcoming") {
+      const callsWithJobs = (detail.calls || []).filter(c => c.job && c.job.trim());
+      if (detail.calls && detail.calls.length > 0 && callsWithJobs.length === 0) {
+        console.warn(`⚠️  Detail page for "${rowObj.event}" has ${detail.calls.length} call(s) but no job/position info`);
+      } else if (!detail.calls || detail.calls.length === 0) {
+        console.warn(`⚠️  Detail page for "${rowObj.event}" has no call table`);
+      }
+    }
+    
     const offerState =
       rowObj.section === "offers"
         ? detail?.offerState === "declined"
@@ -632,11 +643,20 @@ export async function fetchSchedule(page) {
       const matchingCall = detail?.calls?.find((call) =>
         matchDetailCall(rowObj.when.date, rowObj.when.callTime, call)
       );
+      const finalPosition = matchingCall?.job || rowObj.position || "";
+      
+      // Debug: log position source
+      if (finalPosition) {
+        console.log(`✓ Position for "${rowObj.event}": "${finalPosition}" (from ${matchingCall?.job ? 'detail page' : 'dashboard'})`);
+      } else {
+        console.log(`✗ No position found for "${rowObj.event}"`);
+      }
+      
       pushEntry({
         date: rowObj.when.date,
         callTime: rowObj.when.callTime,
         venue: rowObj.where || detail?.venue || "",
-        position: matchingCall?.job || rowObj.position || "",
+        position: finalPosition,
         call: matchingCall
       });
       continue;
