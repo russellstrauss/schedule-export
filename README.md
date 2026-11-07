@@ -20,7 +20,13 @@ node scripts/authorize-calendar.js
 
    If `GOOGLE_TOKEN` is not set, successful authorize still writes `token.json` next to `auth.js`.
 
-3. **IATSE only via cloud:** set `"iatse927": false` in `user-settings.json` so local `node sync.js` does not touch Firestore/Gemini. Trigger your deployed function (ingest or full sync) for IATSE. Leave portals enabled as you like.
+3. **IATSE only via cloud (recommended on mobile):** set `"iatse927": false` in `user-settings.json` so `node sync.js` never needs Firestore/Gemini on the device. Set `SCHEDULE_SYNC_URL` to your production function URL, then:
+
+```bash
+npm run sync:iatse:remote
+```
+
+That calls prod with `?mode=iatse` (IATSE calendar sync only; secrets stay in the cloud). Optional full prod sync: `curl -X POST "$SCHEDULE_SYNC_URL"`.
 
 4. Run a full local sync:
 

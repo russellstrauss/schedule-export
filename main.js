@@ -2,6 +2,7 @@ import getSchedule from "./get-schedule/get-schedule.js";
 import {
   parseRequestBody,
   isIngestRequest,
+  isIatseOnlySyncRequest,
   isSyncRequest
 } from "./get-schedule/request-router.js";
 import { isCloudRuntime } from "./get-schedule/runtime-env.js";
@@ -130,6 +131,38 @@ export async function syncSchedule(req, res) {
       res.status(err.message?.includes("requires") ? 400 : 500).json({
         success: false,
         error: err.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+    return;
+  }
+
+  // Remote IATSE-only sync (mobile CLI: ?mode=iatse). Uses prod Firestore/Gemini; no portal scrape.
+  if (isIatseOnlySyncRequest(req, body)) {
+    try {
+      const { trySyncIatse927FromStore } = await import("./get-schedule/ingest-iatse927.js");
+      console.log("🌐 Starting remote IATSE-only sync...");
+      const syncResult = await trySyncIatse927FromStore({ ignoreUserSettings: true });
+      if (!syncResult) {
+        res.status(200).json({
+          success: true,
+          message: "IATSE sync skipped (no messages, missing GEMINI_API_KEY, or Firestore unavailable)",
+          iatse: null,
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+      res.status(200).json({
+        success: true,
+        message: "IATSE sync completed",
+        iatse: syncResult,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("❌ IATSE-only sync failed:", err);
+      res.status(500).json({
+        success: false,
+        error: err?.message || String(err),
         timestamp: new Date().toISOString()
       });
     }

@@ -17,7 +17,8 @@
     "test:integration": "node tests/run-integration-tests.js",
     "bootstrap:iatse927": "node scripts/bootstrap-iatse927-thread.js",
     "list:iatse927": "node scripts/list-iatse927.js",
-    "sync:iatse927": "node scripts/sync-iatse927.js"
+    "sync:iatse927": "node scripts/sync-iatse927.js",
+    "sync:iatse:remote": "node scripts/trigger-iatse-cloud.js"
   },
   "dependencies": {
     "@google-cloud/firestore": "^8.6.0",
