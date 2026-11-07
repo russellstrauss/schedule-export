@@ -1,12 +1,14 @@
 import { gotoPortalPage } from "../puppeteer.js";
 import { rememberOfferDeadline, recallOfferDeadline } from "./offer-deadline-cache.js";
 import {
+  enrichCrewOneEventDetail,
   formatCrewOneEventDescription,
   getCredentials,
   isCrewOneActionCell,
   isCrewOneDashboardHeading,
   matchDetailCall,
   parseCrew1DateTime,
+  resolveCrewOnePosition,
   sourceId
 } from "./crewOne-parse.js";
 
@@ -371,24 +373,6 @@ async function scrapeEventDetail(page) {
     const venueMatch = bodyText.match(/\nat\s+([^\n\r]+)/);
     const venue = venueMatch ? trim(venueMatch[1]) : "";
 
-    // Try to extract position from common patterns at the top of the page
-    let position = "";
-    // Pattern 1: "Position: STAGEHAND" or "Job: STAGEHAND"
-    const positionMatch = bodyText.match(/(?:position|job|task):\s*([^\n\r]+)/i);
-    if (positionMatch) {
-      position = trim(positionMatch[1]);
-    }
-    // Pattern 2: Look for position near the event name (first few lines)
-    if (!position) {
-      const topText = bodyText.split('\n').slice(0, 10).join('\n');
-      // Common job titles that might appear
-      const jobTitles = /\b(STAGEHAND|RIGGER|CARPENTER|ELECTRICIAN|WARDROBE|AUDIO|LIGHTING|VIDEO|LOADER|SPOT OP|FOLLOW SPOT|DECK|PUSH|FLYMAN|PROPS|PYRO|RUNNER|DRIVER|FORKLIFT|HEAD RIGGER|SHOP|GENERAL LABOR|LABOR)(?:\s*\([^)]+\))?\b/i;
-      const jobMatch = topText.match(jobTitles);
-      if (jobMatch) {
-        position = trim(jobMatch[0]);
-      }
-    }
-
     const callTable = [...document.querySelectorAll("table")].find((t) =>
       /job\/task|start date\/time/i.test(t.textContent || "")
     );
@@ -483,12 +467,12 @@ async function scrapeEventDetail(page) {
     return {
       eventTypeLine: eventTypeLine || "",
       venue,
-      position,
       calls,
       generalNotes,
       venueNotes,
       offerDeadlineText,
-      offerState
+      offerState,
+      bodyText
     };
   });
 }
@@ -502,9 +486,12 @@ async function fetchEventDetail(page, detailUrl, cache) {
   if (cache.has(detailUrl)) return cache.get(detailUrl);
   await gotoPortalPage(page, detailUrl);
   await page
-    .waitForFunction(() => (document.body?.innerText || "").trim().length > 40, { timeout: 30000 })
+    .waitForFunction(
+      () => /job\s*\/\s*task/i.test(document.body?.innerText || ""),
+      { timeout: 30000 }
+    )
     .catch(() => {});
-  const detail = await scrapeEventDetail(page);
+  const detail = enrichCrewOneEventDetail(await scrapeEventDetail(page));
   cache.set(detailUrl, detail);
   return detail;
 }
@@ -604,17 +591,6 @@ export async function fetchSchedule(page) {
     }
 
     const detail = rowObj.detailUrl ? await fetchEventDetail(page, rowObj.detailUrl, detailCache) : null;
-    
-    // Debug: log when detail page has no calls or no job info
-    if (detail && rowObj.section === "upcoming") {
-      const callsWithJobs = (detail.calls || []).filter(c => c.job && c.job.trim());
-      if (detail.calls && detail.calls.length > 0 && callsWithJobs.length === 0) {
-        console.warn(`⚠️  Detail page for "${rowObj.event}" has ${detail.calls.length} call(s) but no job/position info`);
-      } else if (!detail.calls || detail.calls.length === 0) {
-        console.warn(`⚠️  Detail page for "${rowObj.event}" has no call table`);
-      }
-    }
-    
     const offerState =
       rowObj.section === "offers"
         ? detail?.offerState === "declined"
@@ -648,7 +624,7 @@ export async function fetchSchedule(page) {
         location: "",
         client: "",
         type: "",
-        position: whenParts.position || rowObj.position || "",
+        position: resolveCrewOnePosition(detail, whenParts.call, whenParts.position || rowObj.position),
         details: eventDetails,
         status: "confirmed",
         notes: "",
@@ -662,21 +638,11 @@ export async function fetchSchedule(page) {
       const matchingCall = detail?.calls?.find((call) =>
         matchDetailCall(rowObj.when.date, rowObj.when.callTime, call)
       );
-      const finalPosition = matchingCall?.job || detail?.position || rowObj.position || "";
-      
-      // Debug: log position source
-      if (finalPosition) {
-        const source = matchingCall?.job ? 'detail call table' : (detail?.position ? 'detail page top' : 'dashboard');
-        console.log(`✓ Position for "${rowObj.event}": "${finalPosition}" (from ${source})`);
-      } else {
-        console.log(`✗ No position found for "${rowObj.event}"`);
-      }
-      
       pushEntry({
         date: rowObj.when.date,
         callTime: rowObj.when.callTime,
         venue: rowObj.where || detail?.venue || "",
-        position: finalPosition,
+        position: resolveCrewOnePosition(detail, matchingCall, rowObj.position),
         call: matchingCall
       });
       continue;
@@ -693,7 +659,7 @@ export async function fetchSchedule(page) {
           date: when.date,
           callTime: when.callTime,
           venue: detail?.venue || rowObj.where || "",
-          position: call.job || detail?.position || rowObj.position || "",
+          position: resolveCrewOnePosition(detail, call, rowObj.position),
           call
         });
         expanded += 1;
