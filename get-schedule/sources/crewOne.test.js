@@ -222,7 +222,9 @@ describe("crewOne", () => {
           return Promise.resolve({
             eventTypeLine: "This is a CONCERT Event.",
             venue: "",
-            calls: [],
+            calls: [
+              { job: "STAGEHAND", startDateTime: "Fri Oct 2, 2026 8:00 AM", contractorNotes: "" }
+            ],
             generalNotes: "",
             venueNotes: "",
             offerDeadlineText: "This offer closes September 25, 2026 at 9:11 AM",
@@ -236,10 +238,11 @@ describe("crewOne", () => {
     const { fetchSchedule } = await import("./crewOne.js");
     const entries = await fetchSchedule(page);
 
+    expect(entries[0].position).toBe("STAGEHAND");
     expect(entries[0].offerDeadlineText).toBe("This offer closes September 25, 2026 at 9:11 AM");
     expect(entries[0].offerState).toBe("accepted");
     expect(toGoogleEvent(entries[0])).toMatchObject({
-      summary: "7:30am (VENUE) A TEST SHOW [Crew 1]",
+      summary: "7:30am (VENUE) A TEST SHOW - STAGEHAND [Crew 1]",
       status: "confirmed"
     });
     expect(buildCrewOneDeadlineReminderEvent(entries[0])).toBeNull();

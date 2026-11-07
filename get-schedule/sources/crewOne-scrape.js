@@ -636,7 +636,7 @@ export async function fetchSchedule(page) {
         date: rowObj.when.date,
         callTime: rowObj.when.callTime,
         venue: rowObj.where || detail?.venue || "",
-        position: rowObj.position || "",
+        position: matchingCall?.job || rowObj.position || "",
         call: matchingCall
       });
       continue;
