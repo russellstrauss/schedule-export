@@ -371,6 +371,24 @@ async function scrapeEventDetail(page) {
     const venueMatch = bodyText.match(/\nat\s+([^\n\r]+)/);
     const venue = venueMatch ? trim(venueMatch[1]) : "";
 
+    // Try to extract position from common patterns at the top of the page
+    let position = "";
+    // Pattern 1: "Position: STAGEHAND" or "Job: STAGEHAND"
+    const positionMatch = bodyText.match(/(?:position|job|task):\s*([^\n\r]+)/i);
+    if (positionMatch) {
+      position = trim(positionMatch[1]);
+    }
+    // Pattern 2: Look for position near the event name (first few lines)
+    if (!position) {
+      const topText = bodyText.split('\n').slice(0, 10).join('\n');
+      // Common job titles that might appear
+      const jobTitles = /\b(STAGEHAND|RIGGER|CARPENTER|ELECTRICIAN|WARDROBE|AUDIO|LIGHTING|VIDEO|LOADER|SPOT OP|FOLLOW SPOT|DECK|PUSH|FLYMAN|PROPS|PYRO|RUNNER|DRIVER|FORKLIFT|HEAD RIGGER|SHOP|GENERAL LABOR|LABOR)(?:\s*\([^)]+\))?\b/i;
+      const jobMatch = topText.match(jobTitles);
+      if (jobMatch) {
+        position = trim(jobMatch[0]);
+      }
+    }
+
     const callTable = [...document.querySelectorAll("table")].find((t) =>
       /job\/task|start date\/time/i.test(t.textContent || "")
     );
@@ -465,6 +483,7 @@ async function scrapeEventDetail(page) {
     return {
       eventTypeLine: eventTypeLine || "",
       venue,
+      position,
       calls,
       generalNotes,
       venueNotes,
@@ -643,11 +662,12 @@ export async function fetchSchedule(page) {
       const matchingCall = detail?.calls?.find((call) =>
         matchDetailCall(rowObj.when.date, rowObj.when.callTime, call)
       );
-      const finalPosition = matchingCall?.job || rowObj.position || "";
+      const finalPosition = matchingCall?.job || detail?.position || rowObj.position || "";
       
       // Debug: log position source
       if (finalPosition) {
-        console.log(`✓ Position for "${rowObj.event}": "${finalPosition}" (from ${matchingCall?.job ? 'detail page' : 'dashboard'})`);
+        const source = matchingCall?.job ? 'detail call table' : (detail?.position ? 'detail page top' : 'dashboard');
+        console.log(`✓ Position for "${rowObj.event}": "${finalPosition}" (from ${source})`);
       } else {
         console.log(`✗ No position found for "${rowObj.event}"`);
       }
@@ -673,7 +693,7 @@ export async function fetchSchedule(page) {
           date: when.date,
           callTime: when.callTime,
           venue: detail?.venue || rowObj.where || "",
-          position: call.job || rowObj.position || "",
+          position: call.job || detail?.position || rowObj.position || "",
           call
         });
         expanded += 1;
