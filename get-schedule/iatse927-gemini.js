@@ -1,5 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
+import { isCloudRuntime } from "./runtime-env.js";
 import { sourceId } from "./sources/iatse927.js";
 import {
   validateAllEntries,
@@ -215,19 +216,121 @@ function buildGenerationConfig(modelName, responseSchema) {
   return generationConfig;
 }
 
-function getModel(systemInstruction, responseSchema) {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
-  }
+function stripModelsPrefix(modelName) {
+  const name = modelName.trim();
+  return name.startsWith("models/") ? name.slice("models/".length) : name;
+}
 
-  const model = resolveModelName();
-  const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({
-    model,
-    systemInstruction,
-    generationConfig: buildGenerationConfig(model, responseSchema)
+function resolveVertexLocation() {
+  return process.env.GEMINI_VERTEX_LOCATION?.trim() || "us-central1";
+}
+
+function resolveCloudProjectId() {
+  return process.env.GOOGLE_CLOUD_PROJECT?.trim() || process.env.GCLOUD_PROJECT?.trim() || "";
+}
+
+/**
+ * @param {unknown} raw
+ */
+export function normalizeGeminiApiKey(raw) {
+  if (typeof raw !== "string") return "";
+  let key = raw.trim();
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1).trim();
+  }
+  return key;
+}
+
+/**
+ * @param {string} apiKey
+ * @returns {string | null}
+ */
+export function describeGeminiCredentialIssue(apiKey) {
+  if (!apiKey) return null;
+  if (apiKey.startsWith("ya29.") || apiKey.startsWith("1//")) {
+    return "GEMINI_API_KEY looks like a Google OAuth token, not an AI Studio API key";
+  }
+  if (apiKey.startsWith("{") && apiKey.includes("access_token")) {
+    return "GEMINI_API_KEY looks like GOOGLE_TOKEN JSON; use a Gemini API key from AI Studio instead";
+  }
+  return null;
+}
+
+function canUseVertexGemini() {
+  return isCloudRuntime() && !!resolveCloudProjectId();
+}
+
+/**
+ * @param {string} apiKey
+ */
+function preferVertexGemini(apiKey) {
+  const flag = process.env.GEMINI_USE_VERTEX?.trim().toLowerCase();
+  if (flag === "1" || flag === "true" || flag === "yes") return true;
+  if (!canUseVertexGemini()) return false;
+  if (!apiKey) return true;
+  return !!describeGeminiCredentialIssue(apiKey);
+}
+
+/**
+ * @param {"apiKey" | "enterprise"} mode
+ * @param {string} apiKey
+ */
+function buildGeminiClient(mode, apiKey) {
+  if (mode === "enterprise") {
+    return new GoogleGenAI({
+      enterprise: true,
+      project: resolveCloudProjectId(),
+      location: resolveVertexLocation()
+    });
+  }
+  return new GoogleGenAI({ apiKey });
+}
+
+/**
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isGeminiAuthError(err) {
+  const status = /** @type {{ status?: number }} */ (err)?.status;
+  if (status === 401 || status === 403) return true;
+  const msg = String(err instanceof Error ? err.message : err);
+  return /api key not valid|access_token_type_unsupported|unauthenticated|invalid authentication credentials/i.test(
+    msg
+  );
+}
+
+function formatGeminiAuthFailureMessage(lastError) {
+  const detail = geminiErrorDetail(lastError);
+  const base =
+    "Gemini authentication failed. Create or rotate a restricted key at https://aistudio.google.com/apikey " +
+    "and update the GEMINI_API_KEY secret, or enable Vertex AI on this GCP project so the Cloud Function can use its service account.";
+  return detail ? `${base} (${detail})` : base;
+}
+
+/**
+ * @param {import("@google/genai").GoogleGenAI} client
+ * @param {string} modelName
+ * @param {string} prompt
+ * @param {Record<string, unknown>} generationConfig
+ * @param {string} systemInstruction
+ */
+async function invokeGenerateContent(client, modelName, prompt, generationConfig, systemInstruction) {
+  const response = await client.models.generateContent({
+    model: stripModelsPrefix(modelName),
+    contents: prompt,
+    config: {
+      systemInstruction,
+      ...generationConfig
+    }
   });
+  const text = response.text;
+  if (!text) {
+    throw new Error("Gemini returned empty response");
+  }
+  return text;
 }
 
 function buildPayload(messages) {
@@ -254,7 +357,9 @@ const GEMINI_NETWORK_ERROR_RE =
   /fetch failed|und_err_|econnreset|etimedout|enotfound|econnrefused|eai_again|socket hang up|other side closed|headers timeout|headerstimeouterror|connect timeouterror/i;
 
 function scrubSecrets(value) {
-  return String(value ?? "").replace(/AIza[0-9A-Za-z_-]+/g, "[key]");
+  return String(value ?? "")
+    .replace(/AIza[0-9A-Za-z_-]+/g, "[key]")
+    .replace(/AQ\.[A-Za-z0-9._-]+/g, "[key]");
 }
 
 /**
@@ -319,35 +424,80 @@ async function withFetchCause(fn) {
 }
 
 /**
- * @param {{ generateContent: (prompt: string) => Promise<unknown> }} model
  * @param {string} prompt
+ * @param {string} systemInstruction
+ * @param {object} responseSchema
  */
-async function generateContentWithRetry(model, prompt) {
+async function generateContentWithRetry(prompt, systemInstruction, responseSchema) {
+  const model = resolveModelName();
+  const generationConfig = buildGenerationConfig(model, responseSchema);
+  const apiKey = normalizeGeminiApiKey(process.env.GEMINI_API_KEY);
+  const credentialIssue = describeGeminiCredentialIssue(apiKey);
+
+  /** @type {Array<"apiKey" | "enterprise">} */
+  const modes = [];
+  if (preferVertexGemini(apiKey)) {
+    if (!canUseVertexGemini()) {
+      throw new Error(credentialIssue || "GEMINI_API_KEY is not configured");
+    }
+    modes.push("enterprise");
+  } else {
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not configured");
+    }
+    if (credentialIssue) {
+      throw new Error(credentialIssue);
+    }
+    modes.push("apiKey");
+    if (canUseVertexGemini()) {
+      modes.push("enterprise");
+    }
+  }
+
   const retryDelaysMs = [0, 3000, 8000];
   /** @type {unknown} */
   let lastError;
 
-  for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
-    if (retryDelaysMs[attempt] > 0) {
-      console.warn(
-        `⚠️  Gemini retry ${attempt}/${retryDelaysMs.length - 1} after ${retryDelaysMs[attempt] / 1000}s`
-      );
-      await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+  for (let modeIndex = 0; modeIndex < modes.length; modeIndex++) {
+    const mode = modes[modeIndex];
+    const client = buildGeminiClient(mode, apiKey);
+    if (mode === "enterprise" && modeIndex > 0) {
+      console.warn("⚠️  Gemini API key auth failed; retrying with Cloud service account (Vertex)...");
     }
 
-    try {
-      return await withFetchCause(() => model.generateContent(prompt));
-    } catch (err) {
-      lastError = err;
-      const detail = geminiErrorDetail(err);
-      if (!isGeminiRetryableError(err) || attempt === retryDelaysMs.length - 1) {
-        if (detail) console.error(`❌ Gemini request failed: ${detail}`);
-        throw err;
+    for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+      if (retryDelaysMs[attempt] > 0) {
+        console.warn(
+          `⚠️  Gemini retry ${attempt}/${retryDelaysMs.length - 1} after ${retryDelaysMs[attempt] / 1000}s`
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
       }
-      console.warn(`⚠️  Gemini request failed (${detail || "unknown error"})`);
+
+      try {
+        return await withFetchCause(() =>
+          invokeGenerateContent(client, model, prompt, generationConfig, systemInstruction)
+        );
+      } catch (err) {
+        lastError = err;
+        const detail = geminiErrorDetail(err);
+        if (isGeminiAuthError(err) && modeIndex < modes.length - 1) {
+          break;
+        }
+        if (!isGeminiRetryableError(err) || attempt === retryDelaysMs.length - 1) {
+          if (detail) console.error(`❌ Gemini request failed: ${detail}`);
+          if (isGeminiAuthError(err) && modeIndex === modes.length - 1) {
+            throw new Error(formatGeminiAuthFailureMessage(err));
+          }
+          throw err;
+        }
+        console.warn(`⚠️  Gemini request failed (${detail || "unknown error"})`);
+      }
     }
   }
 
+  if (isGeminiAuthError(lastError)) {
+    throw new Error(formatGeminiAuthFailureMessage(lastError));
+  }
   throw lastError;
 }
 
@@ -356,15 +506,15 @@ async function generateContentWithRetry(model, prompt) {
  * @returns {Promise<{ entries: import("./sources/types.js").ScheduleEntry[]; geminiWarnings: import("./iatse927-validation.js").ValidationWarning[] }>}
  */
 async function extractAndVerifyWithGemini(messages) {
-  const model = getModel(SYSTEM_INSTRUCTION, RESPONSE_SCHEMA);
   const payload = buildPayload(messages);
 
-  const result = await generateContentWithRetry(
-    model,
-    `Extract all confirmed shifts, double-check each against the thread, and return corrected entries plus any warnings:\n${JSON.stringify(payload)}`
+  const responseText = await generateContentWithRetry(
+    `Extract all confirmed shifts, double-check each against the thread, and return corrected entries plus any warnings:\n${JSON.stringify(payload)}`,
+    SYSTEM_INSTRUCTION,
+    RESPONSE_SCHEMA
   );
 
-  const parsed = JSON.parse(result.response.text());
+  const parsed = JSON.parse(responseText);
   let entries = normalizeGeminiEntries(parsed.entries ?? parsed);
   entries = expandDualTimeCallEntries(entries, messages);
   entries = enrichIatse927Entries(entries, messages);
