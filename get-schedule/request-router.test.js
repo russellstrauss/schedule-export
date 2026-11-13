@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseRequestBody,
   isIngestRequest,
+  isIatseOnlySyncRequest,
   isSyncRequest
 } from "./request-router.js";
 
@@ -43,6 +44,17 @@ describe("isIngestRequest", () => {
   });
 });
 
+describe("isIatseOnlySyncRequest", () => {
+  it("detects ?mode=iatse", () => {
+    expect(isIatseOnlySyncRequest({ query: { mode: "iatse" } }, null)).toBe(true);
+    expect(isIatseOnlySyncRequest({ query: {} }, { mode: "iatse927" })).toBe(true);
+  });
+
+  it("rejects unrelated modes", () => {
+    expect(isIatseOnlySyncRequest({ query: { mode: "health" } }, null)).toBe(false);
+  });
+});
+
 describe("isSyncRequest", () => {
   it("runs a sync for an ordinary browser GET", () => {
     expect(isSyncRequest({ method: "GET", query: {}, headers: {} }, null)).toBe(true);
@@ -51,6 +63,10 @@ describe("isSyncRequest", () => {
   it("does not sync in explicit health mode", () => {
     expect(isSyncRequest({ method: "GET", query: { mode: "health" } }, null)).toBe(false);
     expect(isSyncRequest({ method: "GET", query: { mode: "status" } }, null)).toBe(false);
+  });
+
+  it("does not run full sync for IATSE-only mode", () => {
+    expect(isSyncRequest({ query: { mode: "iatse" } }, null)).toBe(false);
   });
 
   it("recognizes Cloud Scheduler requests", () => {

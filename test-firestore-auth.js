@@ -15,9 +15,41 @@ console.log("===================================\n");
 // Check environment variables
 console.log("Environment Check:");
 console.log(`  GOOGLE_CLOUD_PROJECT: ${process.env.GOOGLE_CLOUD_PROJECT ? '✅ Set' : '❌ Not set'}`);
+console.log(`  GOOGLE_SERVICE_ACCOUNT_JSON: ${process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? '✅ Set' : '⚠️  Not set'}`);
+console.log(`  GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 ? '✅ Set' : '⚠️  Not set'}`);
 console.log(`  GOOGLE_APPLICATION_CREDENTIALS: ${process.env.GOOGLE_APPLICATION_CREDENTIALS ? '✅ Set' : '⚠️  Not set (will try gcloud CLI)'}`);
 console.log(`  GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? '✅ Set' : '❌ Not set'}`);
 console.log();
+
+// Check inline service account JSON
+if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    console.log(`Service Account (GOOGLE_SERVICE_ACCOUNT_JSON):`);
+    try {
+        const keyData = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+        console.log(`  Type: ${keyData.type || 'unknown'}`);
+        console.log(`  Client Email: ${keyData.client_email || 'missing'}`);
+        console.log(`  Project ID: ${keyData.project_id || 'missing'}`);
+        console.log(`  Private Key: ${keyData.private_key ? '✅ Present' : '❌ Missing'}`);
+    } catch (err) {
+        console.log(`  Error: ❌ ${err.message}`);
+    }
+    console.log();
+}
+
+if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64) {
+    console.log(`Service Account (GOOGLE_SERVICE_ACCOUNT_JSON_BASE64):`);
+    try {
+        const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64.trim(), "base64").toString("utf8");
+        const keyData = JSON.parse(decoded);
+        console.log(`  Type: ${keyData.type || 'unknown'}`);
+        console.log(`  Client Email: ${keyData.client_email || 'missing'}`);
+        console.log(`  Project ID: ${keyData.project_id || 'missing'}`);
+        console.log(`  Private Key: ${keyData.private_key ? '✅ Present' : '❌ Missing'}`);
+    } catch (err) {
+        console.log(`  Error: ❌ ${err.message}`);
+    }
+    console.log();
+}
 
 // Check service account key file
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -104,7 +136,8 @@ try {
     console.log(`      gcloud iam service-accounts keys create ~/firestore-key.json \\`);
     console.log(`        --iam-account=firestore-sync@YOUR_PROJECT_ID.iam.gserviceaccount.com`);
     console.log(`   2. Transfer the file to Android/Termux`);
-    console.log(`   3. Set in .env: GOOGLE_APPLICATION_CREDENTIALS=/path/to/firestore-key.json`);
+    console.log(`   3. Set in .env: GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`);
+    console.log(`      or GOOGLE_APPLICATION_CREDENTIALS=/path/to/firestore-key.json`);
     console.log(`   4. Or install gcloud CLI and run: gcloud auth login`);
     
     process.exit(1);

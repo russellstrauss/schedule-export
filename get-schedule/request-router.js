@@ -42,9 +42,19 @@ export function isIngestRequest(req, body) {
  * @param {import("@google-cloud/functions-framework").Request} req
  * @param {Record<string, unknown> | null} body
  */
+/**
+ * Prod/mobile: Firestore + Gemini + calendar for IATSE only (no portal scrape).
+ * @param {import("@google-cloud/functions-framework").Request} req
+ * @param {Record<string, unknown> | null} body
+ */
+export function isIatseOnlySyncRequest(req, body) {
+  const mode = String(req.query?.mode ?? body?.mode ?? "").toLowerCase();
+  return mode === "iatse" || mode === "iatse927";
+}
+
 export function isSyncRequest(req, body) {
-  const mode = req.query?.mode ?? body?.mode;
-  return !["health", "status"].includes(String(mode || "").toLowerCase());
+  const mode = String(req.query?.mode ?? body?.mode ?? "").toLowerCase();
+  return !["health", "status", "iatse", "iatse927"].includes(mode);
 }
 
 export { INGEST_SOURCE };

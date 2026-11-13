@@ -1,12 +1,14 @@
 import { gotoPortalPage } from "../puppeteer.js";
 import { rememberOfferDeadline, recallOfferDeadline } from "./offer-deadline-cache.js";
 import {
+  enrichCrewOneEventDetail,
   formatCrewOneEventDescription,
   getCredentials,
   isCrewOneActionCell,
   isCrewOneDashboardHeading,
   matchDetailCall,
   parseCrew1DateTime,
+  resolveCrewOnePosition,
   sourceId
 } from "./crewOne-parse.js";
 
@@ -469,7 +471,8 @@ async function scrapeEventDetail(page) {
       generalNotes,
       venueNotes,
       offerDeadlineText,
-      offerState
+      offerState,
+      bodyText
     };
   });
 }
@@ -483,9 +486,12 @@ async function fetchEventDetail(page, detailUrl, cache) {
   if (cache.has(detailUrl)) return cache.get(detailUrl);
   await gotoPortalPage(page, detailUrl);
   await page
-    .waitForFunction(() => (document.body?.innerText || "").trim().length > 40, { timeout: 30000 })
+    .waitForFunction(
+      () => /job\s*\/\s*task/i.test(document.body?.innerText || ""),
+      { timeout: 30000 }
+    )
     .catch(() => {});
-  const detail = await scrapeEventDetail(page);
+  const detail = enrichCrewOneEventDetail(await scrapeEventDetail(page));
   cache.set(detailUrl, detail);
   return detail;
 }
@@ -618,7 +624,7 @@ export async function fetchSchedule(page) {
         location: "",
         client: "",
         type: "",
-        position: whenParts.position || rowObj.position || "",
+        position: resolveCrewOnePosition(detail, whenParts.call, whenParts.position || rowObj.position),
         details: eventDetails,
         status: "confirmed",
         notes: "",
@@ -636,7 +642,7 @@ export async function fetchSchedule(page) {
         date: rowObj.when.date,
         callTime: rowObj.when.callTime,
         venue: rowObj.where || detail?.venue || "",
-        position: rowObj.position || "",
+        position: resolveCrewOnePosition(detail, matchingCall, rowObj.position),
         call: matchingCall
       });
       continue;
@@ -653,7 +659,7 @@ export async function fetchSchedule(page) {
           date: when.date,
           callTime: when.callTime,
           venue: detail?.venue || rowObj.where || "",
-          position: call.job || rowObj.position || "",
+          position: resolveCrewOnePosition(detail, call, rowObj.position),
           call
         });
         expanded += 1;

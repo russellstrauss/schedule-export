@@ -133,36 +133,105 @@ export function getFirestoreProjectId() {
 }
 
 /**
- * Get access token from service account key file if GOOGLE_APPLICATION_CREDENTIALS is set.
- * @returns {Promise<string | null>}
+ * Load service account key JSON from env or file (priority: inline JSON, base64 JSON, file path).
+ * @returns {Promise<{ keyData: object, sourceLabel: string } | null>}
  */
-async function getServiceAccountToken() {
+async function loadServiceAccountKeyData() {
+  const fs = await import("fs");
+  const os = await import("os");
+
+  const inlineJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+  if (inlineJson) {
+    return {
+      keyData: parseServiceAccountJson(inlineJson, "GOOGLE_SERVICE_ACCOUNT_JSON"),
+      sourceLabel: "GOOGLE_SERVICE_ACCOUNT_JSON"
+    };
+  }
+
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+  if (b64) {
+    let decoded;
+    try {
+      decoded = Buffer.from(b64, "base64").toString("utf8");
+    } catch (err) {
+      throw new Error(
+        `Firestore auth failed via GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: invalid base64 (${err.message})`
+      );
+    }
+    return {
+      keyData: parseServiceAccountJson(decoded, "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64"),
+      sourceLabel: "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64"
+    };
+  }
+
   const rawPath = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim().replace(/^['"]|['"]$/g, "");
   if (!rawPath) return null;
 
-  const fs = await import("fs");
-  const os = await import("os");
-  const crypto = await import("crypto");
   const keyPath = rawPath.replace(/^~(?=$|\/)/, os.homedir());
-
-  // Once a key file is configured, report its failure instead of silently falling
-  // through to gcloud (which is usually absent where a key file is used, e.g. Termux).
-  const fail = (reason) => new Error(`Firestore auth failed via GOOGLE_APPLICATION_CREDENTIALS (${keyPath}): ${reason}`);
+  const failFile = (reason) =>
+    new Error(`Firestore auth failed via GOOGLE_APPLICATION_CREDENTIALS (${keyPath}): ${reason}`);
 
   if (!fs.existsSync(keyPath)) {
-    throw fail("file not found");
+    throw failFile("file not found");
   }
 
   let keyData;
   try {
     keyData = JSON.parse(fs.readFileSync(keyPath, "utf8"));
   } catch (err) {
-    throw fail(`could not parse JSON (${err.message})`);
+    throw failFile(`could not parse JSON (${err.message})`);
   }
 
-  if (keyData.type !== "service_account" || !keyData.private_key || !keyData.client_email) {
+  validateServiceAccountKey(keyData, failFile);
+  return { keyData, sourceLabel: `GOOGLE_APPLICATION_CREDENTIALS (${keyPath})` };
+}
+
+/**
+ * @param {string} jsonText
+ * @param {string} sourceLabel
+ * @returns {object}
+ */
+function parseServiceAccountJson(jsonText, sourceLabel) {
+  const fail = (reason) => new Error(`Firestore auth failed via ${sourceLabel}: ${reason}`);
+  let keyData;
+  try {
+    keyData = JSON.parse(jsonText);
+  } catch (err) {
+    throw fail(`could not parse JSON (${err.message})`);
+  }
+  validateServiceAccountKey(keyData, fail);
+  return keyData;
+}
+
+/**
+ * @param {unknown} keyData
+ * @param {(reason: string) => Error} fail
+ */
+function validateServiceAccountKey(keyData, fail) {
+  const k = /** @type {{ type?: string; private_key?: string; client_email?: string }} */ (keyData);
+  if (
+    !k ||
+    typeof k !== "object" ||
+    k.type !== "service_account" ||
+    !k.private_key ||
+    !k.client_email
+  ) {
     throw fail("not a service account key (expected type, client_email and private_key fields)");
   }
+}
+
+/**
+ * Exchange service account JWT for an access token.
+ * @returns {Promise<string | null>}
+ */
+async function getServiceAccountToken() {
+  const crypto = await import("crypto");
+
+  const loaded = await loadServiceAccountKeyData();
+  if (!loaded) return null;
+
+  const { keyData, sourceLabel } = loaded;
+  const fail = (reason) => new Error(`Firestore auth failed via ${sourceLabel}: ${reason}`);
 
   const base64url = (value) => Buffer.from(value).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
@@ -229,7 +298,7 @@ export async function getGcloudAccessToken() {
     }
   }
 
-  // 2. Try service account key file (Android/Termux, local dev)
+  // 2. Try service account JSON (env) or key file path (Android/Termux, local dev)
   const serviceAccountToken = await getServiceAccountToken();
   if (serviceAccountToken) {
     return serviceAccountToken;
@@ -244,7 +313,9 @@ export async function getGcloudAccessToken() {
   } catch {
     throw new Error(
       "Firestore auth failed. Options:\n" +
-      "1. Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json\n" +
+      "1. Set GOOGLE_SERVICE_ACCOUNT_JSON to the service account JSON string, or\n" +
+      "   GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 to the whole JSON file encoded as base64, or\n" +
+      "   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json\n" +
       "2. Run: gcloud auth login && gcloud auth application-default login"
     );
   }

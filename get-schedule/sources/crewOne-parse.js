@@ -193,6 +193,124 @@ export function matchDetailCall(date, callTime, call) {
   return Boolean(when && when.date === date && when.callTime === callTime);
 }
 
+const DETAIL_CALL_LINE =
+  /^(.+?)\s+(\w{3}\s+\w{3}\s+\d{1,2},?\s*(?:\d{4}\s+)?\d{1,2}:\d{2}\s*(?:AM|PM))\b(?:\s+([\s\S]*))?$/i;
+const DETAIL_DATE_ONLY =
+  /^(\w{3}\s+\w{3}\s+\d{1,2},?\s*(?:\d{4}\s+)?\d{1,2}:\d{2}\s*(?:AM|PM))$/i;
+
+function normalizeDetailLine(line) {
+  return String(line || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+/**
+ * Confirmed calls list the shift under a Job/Task column at the top of the
+ * detail page. That column is not on the Upcoming Calls dashboard.
+ * @param {string} bodyText
+ * @returns {{ job: string, startDateTime: string, contractorNotes: string }[]}
+ */
+export function parseCrewOneDetailCallsFromText(bodyText) {
+  const lines = String(bodyText || "")
+    .split(/\r?\n/)
+    .map((line) => String(line || "").replace(/\u00a0/g, " ").trim())
+    .filter(Boolean);
+
+  let startIdx = lines.findIndex(
+    (line) => /job\s*\/\s*task/i.test(line) && /start\s+date/i.test(line)
+  );
+  if (startIdx < 0) {
+    startIdx = lines.findIndex((line) => /^job\s*\/\s*task\b/i.test(line));
+  }
+  if (startIdx < 0) return [];
+
+  const calls = [];
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = normalizeDetailLine(lines[i]);
+    if (/^(note|venue note)\b/i.test(line)) break;
+
+    const inline = line.match(DETAIL_CALL_LINE);
+    if (inline) {
+      const job = inline[1].replace(/\s+/g, " ").trim();
+      const startDateTime = inline[2].replace(/\s+/g, " ").trim();
+      const contractorNotes = (inline[3] || "").replace(/\s+/g, " ").trim();
+      if (job && !/^job\s*\/\s*task$/i.test(job) && !/^i need to\b/i.test(job)) {
+        calls.push({ job, startDateTime, contractorNotes });
+      }
+      continue;
+    }
+
+    const next = normalizeDetailLine(lines[i + 1] || "");
+    if (
+      DETAIL_DATE_ONLY.test(next) &&
+      !DETAIL_DATE_ONLY.test(line) &&
+      !/job\s*\/\s*task|start\s+date|contractor notes|^i need to\b/i.test(line)
+    ) {
+      calls.push({ job: line, startDateTime: next, contractorNotes: "" });
+      i += 1;
+    }
+  }
+  return calls;
+}
+
+function soleCrewOneJob(calls) {
+  const jobs = [
+    ...new Set((calls || []).map((call) => String(call?.job || "").trim()).filter(Boolean))
+  ];
+  return jobs.length === 1 ? jobs[0] : "";
+}
+
+/**
+ * Fill missing Job/Task values from the detail page text, and remember a
+ * page-level position when every call on the page is the same shift.
+ * @param {Record<string, any> | null | undefined} detail
+ */
+export function enrichCrewOneEventDetail(detail) {
+  if (!detail || typeof detail !== "object") return detail;
+  const textCalls = parseCrewOneDetailCallsFromText(detail.bodyText || "");
+  let calls = Array.isArray(detail.calls) ? detail.calls.map((call) => ({ ...call })) : [];
+
+  if (textCalls.length) {
+    const jobsMissing =
+      calls.length === 0 || calls.every((call) => !String(call.job || "").trim());
+    if (jobsMissing && calls.some((call) => String(call.startDateTime || "").trim())) {
+      calls = calls.map((call) => {
+        if (String(call.job || "").trim()) return call;
+        const match = textCalls.find((textCall) =>
+          matchDetailCall(
+            parseCrew1DateTime(call.startDateTime)?.date,
+            parseCrew1DateTime(call.startDateTime)?.callTime,
+            textCall
+          )
+        );
+        return match
+          ? { ...call, job: match.job, contractorNotes: call.contractorNotes || match.contractorNotes }
+          : call;
+      });
+      if (calls.every((call) => !String(call.job || "").trim())) calls = textCalls;
+    } else if (jobsMissing) {
+      calls = textCalls;
+    }
+  }
+
+  const position = String(detail.position || "").trim() || soleCrewOneJob(calls);
+  return { ...detail, calls, position };
+}
+
+/**
+ * @param {{ position?: string, calls?: { job?: string }[] } | null | undefined} detail
+ * @param {{ job?: string } | null | undefined} call
+ * @param {string} [rowPosition]
+ */
+export function resolveCrewOnePosition(detail, call, rowPosition = "") {
+  const callJob = String(call?.job || "").trim();
+  if (callJob) return callJob;
+  const pageJob = String(detail?.position || "").trim();
+  if (pageJob) return pageJob;
+  return String(rowPosition || "").trim();
+}
+
 /**
  * @param {{
  *   eventTypeLine?: string;

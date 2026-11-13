@@ -121,10 +121,11 @@ export async function resyncIatse927FromStore() {
 
 /**
  * Sync IATSE from Firestore when configured; skip gracefully otherwise.
+ * @param {{ ignoreUserSettings?: boolean }} [options] — remote `?mode=iatse` sets this so prod can sync while local user-settings has IATSE off.
  * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null>}
  */
-export async function trySyncIatse927FromStore() {
-  if (!isSourceEnabled(sourceId)) {
+export async function trySyncIatse927FromStore(options = {}) {
+  if (!options.ignoreUserSettings && !isSourceEnabled(sourceId)) {
     console.log(`ℹ️  ${sourceId} is turned off in user-settings.json; skipping calendar sync.`);
     return null;
   }
