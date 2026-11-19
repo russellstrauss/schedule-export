@@ -4,23 +4,17 @@ Syncs upcoming work calls from Rhino, Crew One, Technical Elements, and IATSE 92
 
 The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 
-- **Batch sync** (Cloud Scheduler or `node sync.js`): scrape enabled portal sources, then re-parse stored IATSE messages with Gemini and upsert calendar events.
-- **IATSE ingest** (`POST` with `mode: ingest` / `source: iatse927`): store one SMS in Firestore and sync the IATSE calendar in the background.
+- **Batch sync** (Cloud Scheduler or `node sync.js`): scrape enabled portal sources then update calendar events.
 
 ## Local setup
 
-1. Copy `.env.example` to `.env` and fill in portal credentials, Google OAuth, and (for IATSE locally) `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, and a **Firestore service account** via `GOOGLE_SERVICE_ACCOUNT_JSON` or `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` (or `GOOGLE_APPLICATION_CREDENTIALS` path to a key file). Turn companies on or off in `user-settings.json`. Portal login pages are fixed in the source.
+1. Copy `.env.example` to `.env` and fill in portal credentials and Google OAuth. Turn companies on or off in `user-settings.json`.
 2. Google Calendar OAuth — **either**:
-   - **Env only (recommended on Termux / no JSON files):** set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `GOOGLE_TOKEN` (JSON string from a prior authorize flow). You do not need `credentials.json` or `token.json`.
-   - **Or file-based:** place `credentials.json` in `get-schedule/google-calendar/` and authorize once:
+   - **Set environment variables:** set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `GOOGLE_TOKEN` (JSON string from a prior authorize flow).
 
 ```bash
 node scripts/authorize-calendar.js
 ```
-
-   If `GOOGLE_TOKEN` is not set, successful authorize still writes `token.json` next to `auth.js`.
-
-3. **Production fallback:** set `SCHEDULE_SYNC_URL` to the production function URL. `node sync.js` always tries the sync on this device first. If that run fails, or IATSE is enabled and the device cannot finish it (missing Gemini key, Firestore auth, or Gemini rejection), the same command POSTs to production and runs the full sync there. Manual IATSE-only trigger, without a local attempt: `npm run sync:iatse:remote`.
 
 4. Run a full local sync:
 
@@ -33,8 +27,6 @@ Or start the Functions Framework (OAuth redirect URI `http://localhost:8080`):
 ```bash
 npm start
 ```
-
-IATSE helpers: `npm run bootstrap:iatse927`, `npm run list:iatse927`, `npm run sync:iatse927`.
 
 ## Tests
 
@@ -50,4 +42,4 @@ See [tests/TESTING.md](tests/TESTING.md) and [tests/README.md](tests/README.md).
 
 Node 24 Cloud Function + Cloud Scheduler. Scripts live in `deployment/`. See [deployment/DEPLOYMENT.md](deployment/DEPLOYMENT.md).
 
-Pushes to `main` update the production function `sync-schedule`. Pushes to `develop` are built by Cloud Build trigger `push-develop-schedule-sync` and update `sync-schedule-develop`, a separate URL for testing. That URL is not on the midnight schedule. A request without `?mode=health` still runs a real calendar sync.
+Pushes to `main` update the production function `sync-schedule`. Pushes to `develop` are built by Cloud Build trigger `push-develop-schedule-sync` and update `sync-schedule-develop`, a separate URL for testing. That URL is not on the midnight schedule.
