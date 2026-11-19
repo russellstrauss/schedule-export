@@ -3,8 +3,10 @@ import dotenv from "dotenv";
 import { authorize } from "./google-calendar/auth.js";
 import { addEvent, purgeCrewOneDeadlineReminderEvents, purgeOrphanedSourceEvents } from "./google-calendar/add-event.js";
 import { withAuthRetry } from "./auth-handler.js";
-import { trySyncIatse927FromStore } from "./ingest-iatse927.js";
-import { isFirestoreCredentialsError } from "./iatse927-firestore-auth.js";
+import {
+  attemptSyncIatse927FromStore,
+  iatseAttemptNeedsRemoteFallback
+} from "./ingest-iatse927.js";
 import { getPuppeteer, getPortalBrowserLaunchOptions, configurePortalPage } from "./puppeteer.js";
 import { getEnabledSourceIds, getSource } from "./sources/index.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
@@ -156,25 +158,22 @@ export default async function getSchedule() {
   }
 
   let iatseResult = null;
+  let iatseFailed = false;
   if (!enabledIds.includes("iatse927")) {
     console.log("ℹ️  iatse927 is turned off in user-settings.json; skipping calendar sync.");
   } else {
-    try {
-      iatseResult = await trySyncIatse927FromStore();
-    } catch (err) {
-      if (isFirestoreCredentialsError(err)) {
-        console.warn(
-          `⚠️  Skipping iatse927: Firestore credentials not available (${err instanceof Error ? err.message : err})`
-        );
-      } else {
-        throw err;
-      }
-    }
+    const attempt = await attemptSyncIatse927FromStore();
+    iatseResult = attempt.result;
+    iatseFailed = iatseAttemptNeedsRemoteFallback(attempt);
   }
 
   if (portalSourcesRan === 0 && !iatseResult) {
-    throw new Error(
+    const error = new Error(
       "No schedule sources ran. Turn a company on in user-settings.json and configure its credentials."
     );
+    error.iatseFailed = iatseFailed;
+    throw error;
   }
+
+  return { portalSourcesRan, iatseResult, iatseFailed };
 }

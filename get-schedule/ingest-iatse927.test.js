@@ -54,7 +54,13 @@ vi.mock("./auth-handler.js", () => ({
   withAuthRetry: vi.fn(async (_auth, fn) => fn({}))
 }));
 
-import { storeIatse927Message, trySyncIatse927FromStore, syncIatse927FromMessages } from "./ingest-iatse927.js";
+import {
+  storeIatse927Message,
+  trySyncIatse927FromStore,
+  attemptSyncIatse927FromStore,
+  iatseAttemptNeedsRemoteFallback,
+  syncIatse927FromMessages
+} from "./ingest-iatse927.js";
 import * as userSettings from "./user-settings.js";
 import {
   purgeOrphanedSourceEvents,
@@ -137,6 +143,20 @@ describe("trySyncIatse927FromStore", () => {
     );
     const result = await trySyncIatse927FromStore();
     expect(result).toBeNull();
+  });
+
+  it("asks for a remote fallback when the device cannot run Gemini", async () => {
+    delete process.env.GEMINI_API_KEY;
+    const attempt = await attemptSyncIatse927FromStore();
+    expect(attempt.reason).toBe("missing-api-key");
+    expect(iatseAttemptNeedsRemoteFallback(attempt)).toBe(true);
+  });
+
+  it("does not ask for a remote fallback when Firestore has no messages", async () => {
+    vi.mocked(loadAllMessages).mockResolvedValueOnce([]);
+    const attempt = await attemptSyncIatse927FromStore();
+    expect(attempt.reason).toBe("no-messages");
+    expect(iatseAttemptNeedsRemoteFallback(attempt)).toBe(false);
   });
 });
 

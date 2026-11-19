@@ -120,19 +120,47 @@ export async function resyncIatse927FromStore() {
 }
 
 /**
- * Sync IATSE from Firestore when configured; skip gracefully otherwise.
- * @param {{ ignoreUserSettings?: boolean }} [options] — remote `?mode=iatse` sets this so prod can sync while local user-settings has IATSE off.
- * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null>}
+ * Reasons that mean the local device could not finish IATSE. An empty thread
+ * or a source that is turned off is a completed local result, not a failure.
  */
-export async function trySyncIatse927FromStore(options = {}) {
+const IATSE_REMOTE_FALLBACK_REASONS = new Set([
+  "missing-api-key",
+  "firestore-not-found",
+  "firestore-credentials",
+  "firestore-project",
+  "gemini-unavailable"
+]);
+
+/**
+ * @param {string} reason
+ * @param {{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null} [result]
+ */
+function iatseAttempt(reason, result = null) {
+  return { reason, result };
+}
+
+/**
+ * @param {{ reason: string }} attempt
+ * @returns {boolean}
+ */
+export function iatseAttemptNeedsRemoteFallback(attempt) {
+  return IATSE_REMOTE_FALLBACK_REASONS.has(attempt?.reason);
+}
+
+/**
+ * Sync IATSE from Firestore when configured, and report why it did not sync.
+ * @param {{ ignoreUserSettings?: boolean }} [options] — remote `?mode=iatse` sets this so prod can sync while local user-settings has IATSE off.
+ * @returns {Promise<{ reason: string; result: { parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null }>}
+ */
+export async function attemptSyncIatse927FromStore(options = {}) {
   if (!options.ignoreUserSettings && !isSourceEnabled(sourceId)) {
     console.log(`ℹ️  ${sourceId} is turned off in user-settings.json; skipping calendar sync.`);
-    return null;
+    return iatseAttempt("disabled");
   }
 
   if (!process.env.GEMINI_API_KEY?.trim()) {
     console.warn(`⚠️  Skipping ${sourceId}: GEMINI_API_KEY not configured`);
-    return null;
+    return iatseAttempt("missing-api-key");
   }
 
   let messages;
@@ -141,38 +169,48 @@ export async function trySyncIatse927FromStore(options = {}) {
   } catch (err) {
     if (isFirestoreNotFoundError(err)) {
       console.warn(`⚠️  Skipping ${sourceId}: Firestore database not found`);
-      return null;
+      return iatseAttempt("firestore-not-found");
     }
     if (isFirestoreCredentialsError(err)) {
       console.warn(
         `⚠️  Skipping ${sourceId}: Firestore credentials not available (${err instanceof Error ? err.message : err})`
       );
-      return null;
+      return iatseAttempt("firestore-credentials");
     }
     if (isFirestoreProjectIdError(err)) {
       console.warn(
         `⚠️  Skipping ${sourceId}: Firestore project ID not configured (${err instanceof Error ? err.message : err})`
       );
-      return null;
+      return iatseAttempt("firestore-project");
     }
     throw err;
   }
 
   if (messages.length === 0) {
     console.warn(`⚠️  Skipping ${sourceId}: no messages in Firestore`);
-    return null;
+    return iatseAttempt("no-messages");
   }
 
   try {
-    return await syncIatse927FromMessages(messages);
+    return iatseAttempt("synced", await syncIatse927FromMessages(messages));
   } catch (err) {
     if (isGeminiUnavailableError(err)) {
       const detail = err instanceof Error ? err.message : String(err);
       console.warn(`⚠️  Skipping ${sourceId}: Gemini unavailable (${detail})`);
-      return null;
+      return iatseAttempt("gemini-unavailable");
     }
     throw err;
   }
+}
+
+/**
+ * Sync IATSE from Firestore when configured; skip gracefully otherwise.
+ * @param {{ ignoreUserSettings?: boolean }} [options] — remote `?mode=iatse` sets this so prod can sync while local user-settings has IATSE off.
+ * @returns {Promise<{ parsed: number; synced: number; warnings: import("./iatse927-validation.js").ValidationWarning[] } | null>}
+ */
+export async function trySyncIatse927FromStore(options = {}) {
+  const attempt = await attemptSyncIatse927FromStore(options);
+  return attempt.result;
 }
 
 /**
