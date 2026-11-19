@@ -9,7 +9,7 @@ The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
 ## Local setup
 
 1. Copy `.env.example` to `.env` and fill in portal credentials and Google OAuth. Turn companies on or off in `user-settings.json`.
-2. Google Calendar OAuth — **either**:
+2. Google Calendar OAuth:
    - **Set environment variables:** set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `GOOGLE_TOKEN`.
 
 ```bash
