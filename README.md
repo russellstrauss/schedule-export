@@ -2,7 +2,7 @@
 
 Syncs upcoming work calls from Rhino, Crew One, Technical Elements, and IATSE 927 SMS into one Google Calendar.
 
-The HTTP Cloud Function (`syncSchedule` in `main.js`) does two jobs:
+The HTTP Cloud Function (`syncSchedule` in `main.js`):
 
 - **Batch sync** (Cloud Scheduler or `node sync.js`): scrape enabled portal sources then update calendar events.
 
