@@ -16,6 +16,11 @@ import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
 
 let iatseSyncInFlight = null;
+let inFlightSnapshotKey = null;
+/** @type {{ text: string; receivedAt?: Date | null; messageId?: string }[] | null} */
+let queuedMessages = null;
+/** @type {Promise<unknown> | null} */
+let queuedSync = null;
 let lastSuccessfulIatseSchedule = null;
 
 function messageSnapshotKey(messages) {
@@ -100,10 +105,32 @@ async function syncIatse927FromMessagesInternal(messages) {
 }
 
 export function syncIatse927FromMessages(messages) {
-  if (iatseSyncInFlight) return iatseSyncInFlight;
+  const snapshotKey = messageSnapshotKey(messages);
+  if (iatseSyncInFlight) {
+    if (snapshotKey === inFlightSnapshotKey) return iatseSyncInFlight;
+    queuedMessages = messages;
+    if (!queuedSync) {
+      queuedSync = iatseSyncInFlight
+        .then(
+          (result) => ({ result }),
+          (error) => ({ error })
+        )
+        .then(({ result, error }) => {
+          const next = queuedMessages;
+          queuedMessages = null;
+          queuedSync = null;
+          if (next) return syncIatse927FromMessages(next);
+          if (error) throw error;
+          return result;
+        });
+    }
+    return queuedSync;
+  }
 
+  inFlightSnapshotKey = snapshotKey;
   iatseSyncInFlight = syncIatse927FromMessagesInternal(messages).finally(() => {
     iatseSyncInFlight = null;
+    inFlightSnapshotKey = null;
   });
   return iatseSyncInFlight;
 }

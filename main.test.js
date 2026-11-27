@@ -19,7 +19,7 @@ vi.mock("./get-schedule/ingest-iatse927.js", () => ({
 
 import { syncSchedule } from "./main.js";
 import getSchedule from "./get-schedule/get-schedule.js";
-import { storeIatse927Message } from "./get-schedule/ingest-iatse927.js";
+import { storeIatse927Message, trySyncIatse927FromStore } from "./get-schedule/ingest-iatse927.js";
 
 function createResponse() {
   return {
@@ -48,10 +48,44 @@ describe("syncSchedule IATSE ingest", () => {
     await syncSchedule({ method: "POST", path: "/", query: {}, body }, response);
 
     expect(storeIatse927Message).toHaveBeenCalledWith(body);
+    expect(trySyncIatse927FromStore).toHaveBeenCalled();
     expect(response.status).toHaveBeenCalledWith(200);
     expect(response.json).toHaveBeenCalledWith(
-      expect.objectContaining({ success: true, stored: true })
+      expect.objectContaining({
+        success: true,
+        stored: true,
+        message: "IATSE 927 message stored and calendar sync completed",
+        synced: 1
+      })
     );
+  });
+
+  it("finishes the calendar sync before it responds", async () => {
+    const order = [];
+    storeIatse927Message.mockImplementationOnce(async () => {
+      order.push("store");
+      return { stored: true, id: "message-1" };
+    });
+    trySyncIatse927FromStore.mockImplementationOnce(async () => {
+      order.push("sync");
+      return { parsed: 2, synced: 2, warnings: [] };
+    });
+    const response = createResponse();
+    response.json.mockImplementation(() => {
+      order.push("json");
+    });
+
+    await syncSchedule(
+      {
+        method: "POST",
+        path: "/",
+        query: {},
+        body: { mode: "ingest", source: "iatse927", text: "Confirmed Dec 6 and 28" }
+      },
+      response
+    );
+
+    expect(order).toEqual(["store", "sync", "json"]);
   });
 });
 

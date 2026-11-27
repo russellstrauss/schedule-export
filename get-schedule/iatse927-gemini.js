@@ -8,10 +8,10 @@ import {
   omitPastEventWarnings
 } from "./iatse927-validation.js";
 import { expandDualTimeCallEntries } from "./iatse927-call-expander.js";
-import { buildGeminiContextPayload } from "./iatse927-message-context.js";
+import { buildGeminiContextPayload, expandEntriesForUnparsedDates } from "./iatse927-message-context.js";
+import { canonicalizeScheduleDate } from "./iatse927-thread-parser.js";
 import {
   normalizeScheduleCallTime,
-  normalizeScheduleDate,
   sortScheduleEntriesChronologically
 } from "./utils.js";
 import { enrichIatse927Entries } from "./iatse927-entry-enrichment.js";
@@ -97,7 +97,7 @@ Extraction rules:
 - venue is the venue name (same for load-in and load-out on the same show/date). location is the street address for THIS entry only — use the load-in address on Load In entries and the load-out address on Load Out entries when the reminder gives different addresses; otherwise use the shared address. Leave location empty when no street address is given.
 - Cross-thread: Shawn scheduling + Tyler reminders may interleave; use receivedAt order.
 - Ignore availability-only, declines, filled-already, superseded offers, standalone reminder acks.
-- Use timezone ${DEFAULT_TIMEZONE}. Infer year from message dates + thread timing.
+- Use timezone ${DEFAULT_TIMEZONE}. payload.today is the current calendar day. A bare month and day that is still ahead of today is this year. "Dec 6 and 28" or "December 6 and 28" is two dates, December 6 and December 28, not one date.
 - Each entry needs evidenceIndices (0-based message indices) citing confirmation and/or supporting reminder.
 - confidence: high for explicit Confirmed; medium for steward assignment + acceptance; low if uncertain.
 - status "confirmed" only.
@@ -141,7 +141,7 @@ function normalizeGeminiEntries(raw) {
     const status = typeof row.status === "string" ? row.status.trim().toLowerCase() : "confirmed";
     if (status === "declined" || status === "superseded") continue;
 
-    const date = typeof row.date === "string" ? normalizeScheduleDate(row.date.trim()) : "";
+    const date = typeof row.date === "string" ? canonicalizeScheduleDate(row.date.trim()) : "";
     const callTime = typeof row.callTime === "string"
       ? normalizeScheduleCallTime(row.callTime.trim())
       : "";
@@ -366,6 +366,7 @@ async function extractAndVerifyWithGemini(messages) {
 
   const parsed = JSON.parse(result.response.text());
   let entries = normalizeGeminiEntries(parsed.entries ?? parsed);
+  entries = expandEntriesForUnparsedDates(entries, messages);
   entries = expandDualTimeCallEntries(entries, messages);
   entries = enrichIatse927Entries(entries, messages);
   entries = sortScheduleEntriesChronologically(entries);

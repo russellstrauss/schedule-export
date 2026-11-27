@@ -2,7 +2,7 @@ import { inferYearForMonthDay } from "./iatse927-thread-parser.js";
 
 const CONFIRMED_LINE_RE =
   /Confirmed\s+(\d{1,2}\/\d{1,2})\s+(\S+)\s+(.+?)(?:\.|Thank|$)/i;
-const TIME_TOKEN_RE = /(\d{1,2}(?::\d{2})?\s*(?:AM|PM))/gi;
+const TIME_TOKEN_RE = /(\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b)/gi;
 
 /**
  * @param {string} token
