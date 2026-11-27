@@ -101,31 +101,42 @@ export async function syncSchedule(req, res) {
       console.log("📱 Starting IATSE 927 ingest (store)...");
       const result = await storeIatse927Message(payload);
 
+      // Finish the calendar sync before responding. Cloud Run throttles CPU after
+      // the response is sent, which dropped the previous "background" sync.
+      let syncResult = null;
+      /** @type {string | null} */
+      let syncError = null;
+      if (syncing) {
+        try {
+          syncResult = await trySyncIatse927FromStore();
+          if (!syncResult) {
+            console.warn("⚠️  IATSE 927 sync skipped (check GEMINI_API_KEY / Firestore)");
+          } else {
+            console.log(
+              `✅ IATSE 927 sync complete: parsed=${syncResult.parsed}, synced=${syncResult.synced}`
+            );
+          }
+        } catch (err) {
+          syncError = err instanceof Error ? err.message : String(err);
+          console.error("❌ IATSE 927 sync failed:", err);
+        }
+      }
+
       res.status(200).json({
         success: true,
-        message: syncing
-          ? "IATSE 927 message stored; calendar sync running in background"
-          : "IATSE 927 message stored; calendar sync is turned off",
+        message: !syncing
+          ? "IATSE 927 message stored; calendar sync is turned off"
+          : syncResult
+            ? "IATSE 927 message stored and calendar sync completed"
+            : "IATSE 927 message stored; calendar sync did not complete",
         stored: result.stored,
         id: result.id,
         syncing,
+        parsed: syncResult?.parsed ?? null,
+        synced: syncResult?.synced ?? null,
+        syncError,
         timestamp: new Date().toISOString()
       });
-
-      if (!syncing) return;
-
-      try {
-        const syncResult = await trySyncIatse927FromStore();
-        if (!syncResult) {
-          console.warn("⚠️  IATSE 927 background sync skipped (check GEMINI_API_KEY / Firestore)");
-        } else {
-          console.log(
-            `✅ IATSE 927 background sync complete: parsed=${syncResult.parsed}, synced=${syncResult.synced}`
-          );
-        }
-      } catch (err) {
-        console.error("❌ IATSE 927 background sync failed:", err);
-      }
     } catch (err) {
       console.error("❌ IATSE ingest failed:", err);
       res.status(err.message?.includes("requires") ? 400 : 500).json({

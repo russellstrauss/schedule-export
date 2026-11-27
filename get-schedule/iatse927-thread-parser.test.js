@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseRcsThread, mergeAndSortMessages, inferYearForMonthDay } from "./iatse927-thread-parser.js";
+import {
+  parseRcsThread,
+  mergeAndSortMessages,
+  inferYearForMonthDay,
+  alignUpcomingScheduleDate,
+  extractScheduleDates
+} from "./iatse927-thread-parser.js";
 import {
   SHAWN_SCHEDULING_THREAD_EXPORT,
   TYLER_REMINDERS_THREAD_EXPORT,
@@ -12,6 +18,31 @@ describe("inferYearForMonthDay", () => {
     const ref = new Date("2026-06-06T12:00:00");
     expect(inferYearForMonthDay(5, 15, ref)).toBe(2026);
     expect(inferYearForMonthDay(7, 1, ref)).toBe(2026);
+  });
+});
+
+describe("December day lists", () => {
+  const november = new Date("2026-11-27T15:00:00Z");
+
+  it("reads Dec 6 and 28 as two December dates this year", () => {
+    expect(extractScheduleDates("Confirmed Dec 6 and 28 State Farm 8AM", november)).toEqual([
+      "12/6/2026",
+      "12/28/2026"
+    ]);
+    expect(extractScheduleDates("December 6 and 28", november)).toEqual(["12/6/2026", "12/28/2026"]);
+    expect(extractScheduleDates("12/6 and 28", november)).toEqual(["12/6/2026", "12/28/2026"]);
+  });
+
+  it("keeps a numeric time from being read as a day", () => {
+    expect(extractScheduleDates("Confirmed 6/3 Chastain 10:30AM and 10PM", new Date("2026-06-01T16:00:00Z"))).toEqual([
+      "6/3/2026"
+    ]);
+  });
+
+  it("moves a past-year December date onto this year while that day is still ahead", () => {
+    expect(alignUpcomingScheduleDate("12/6/2025", november)).toBe("12/6/2026");
+    expect(alignUpcomingScheduleDate("12/28/2025", november)).toBe("12/28/2026");
+    expect(alignUpcomingScheduleDate("9/19/2025", november)).toBe("9/19/2025");
   });
 });
 

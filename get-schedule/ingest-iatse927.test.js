@@ -177,6 +177,29 @@ describe("syncIatse927FromMessages", () => {
     expect(resolveScheduleEntriesWithValidation).toHaveBeenCalledTimes(1);
   });
 
+  it("syncs a newer message snapshot after the in-flight sync finishes", async () => {
+    let releaseFirst = () => {};
+    const gate = new Promise((resolve) => {
+      releaseFirst = () => resolve({ entries: [], warnings: [] });
+    });
+    resolveScheduleEntriesWithValidation.mockImplementationOnce(() => gate);
+    resolveScheduleEntriesWithValidation.mockResolvedValueOnce({
+      entries: [mockEntry],
+      warnings: []
+    });
+
+    const first = syncIatse927FromMessages([{ text: "older snapshot", messageId: "older" }]);
+    const second = syncIatse927FromMessages([{ text: "Dec 6 and 28", messageId: "newer" }]);
+    expect(second).not.toBe(first);
+    releaseFirst();
+    await second;
+
+    expect(resolveScheduleEntriesWithValidation).toHaveBeenCalledTimes(2);
+    expect(resolveScheduleEntriesWithValidation).toHaveBeenLastCalledWith([
+      { text: "Dec 6 and 28", messageId: "newer" }
+    ]);
+  });
+
   it("consolidates existing calendar duplicates when no future rows are parsed", async () => {
     resolveScheduleEntriesWithValidation.mockResolvedValueOnce({ entries: [], warnings: [] });
 

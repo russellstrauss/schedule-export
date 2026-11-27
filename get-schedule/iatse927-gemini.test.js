@@ -60,13 +60,15 @@ const geminiEntries = [
 
 
 
-const geminiResponse = JSON.stringify({
+const defaultGeminiResponse = JSON.stringify({
 
   entries: geminiEntries,
 
   warnings: []
 
 });
+
+let geminiResponse = defaultGeminiResponse;
 
 
 
@@ -182,6 +184,39 @@ describe("extractScheduleEntriesWithGemini", () => {
 
     expect(entries[1].sourceText).toBe(SAMPLE_REMINDER_SMS);
 
+  });
+
+  it("turns a past-year December date into this year and adds the other day", async () => {
+    geminiResponse = JSON.stringify({
+      entries: [
+        {
+          date: "12/6/2025",
+          callTime: "08:00",
+          show: "State Farm",
+          venue: "State Farm",
+          type: "Call",
+          status: "confirmed",
+          confidence: "high",
+          evidenceIndices: [0]
+        }
+      ],
+      warnings: []
+    });
+
+    try {
+      const entries = await extractScheduleEntriesWithGemini([
+        {
+          text: "Confirmed Dec 6 and 28 State Farm 8AM. Thank you",
+          receivedAt: new Date("2026-11-27T15:00:00Z")
+        }
+      ]);
+      expect(entries.map((entry) => `${entry.date} ${entry.callTime}`)).toEqual([
+        "12/6/2026 08:00",
+        "12/28/2026 08:00"
+      ]);
+    } finally {
+      geminiResponse = defaultGeminiResponse;
+    }
   });
 
 });
