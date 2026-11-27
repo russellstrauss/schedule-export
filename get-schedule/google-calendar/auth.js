@@ -180,10 +180,6 @@ export async function authorize() {
 				} catch (err) {
 					console.error("⚠️  Failed to save updated token:", err.message);
 				}
-			} else {
-				console.log(
-					"🔄 Access token refreshed in memory (GOOGLE_TOKEN in use — update .env if you need to persist a new refresh token)"
-				);
 			}
 		});
 

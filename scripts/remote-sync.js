@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 /**
  * Production sync URL. SCHEDULE_SYNC_URL is the explicit setting; FUNCTION_URL is accepted

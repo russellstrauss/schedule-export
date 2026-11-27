@@ -12,7 +12,7 @@ import { getEnabledSourceIds, getSource } from "./sources/index.js";
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
 import { isEventCancelled, logAndMapEvents, scheduleRowId } from "./utils.js";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 /**
  * @param {import("./sources/types.js").ScheduleEntry[]} entries
