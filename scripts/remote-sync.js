@@ -12,8 +12,20 @@ export function resolveScheduleSyncUrl() {
 }
 
 /**
- * Ask the deployed production function to run the same sync the device just failed to finish.
- * No mode runs the full sync (portals and IATSE). `mode: "iatse"` is the manual IATSE-only command.
+ * Production fallback after a local `node sync.js` run.
+ * IATSE-only when that step failed and the rest of the local sync finished.
+ * Any other local failure keeps the full sync.
+ * @param {{ iatseFailed?: boolean, localError?: unknown }} outcome
+ * @returns {"" | "iatse"}
+ */
+export function resolveRemoteFallbackMode(outcome = {}) {
+  if (outcome.iatseFailed && !outcome.localError) return "iatse";
+  return "";
+}
+
+/**
+ * Ask the deployed production function to run the sync the device did not finish.
+ * No mode runs the full sync (portals and IATSE). `mode: "iatse"` posts to `?mode=iatse` and runs only IATSE.
  * @param {{ mode?: string }} [options]
  * @returns {Promise<Record<string, unknown>>}
  */
@@ -30,8 +42,9 @@ export async function triggerProductionSync(options = {}) {
   const timeoutMs = Number(process.env.SCHEDULE_SYNC_TIMEOUT_MS || 600_000);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const label = mode === "iatse" || mode === "iatse927" ? "IATSE" : "production";
 
-  console.log(`🌐 Requesting remote production sync: ${url}`);
+  console.log(`🌐 Requesting remote ${label} sync: ${url}`);
 
   try {
     const response = await fetch(url, {
@@ -51,13 +64,13 @@ export async function triggerProductionSync(options = {}) {
 
     if (!response.ok || data?.success === false) {
       const detail = data?.error || data?.message || data?.raw || response.statusText;
-      throw new Error(`Remote production sync returned HTTP ${response.status}: ${detail}`);
+      throw new Error(`Remote ${label} sync returned HTTP ${response.status}: ${detail}`);
     }
 
     return data;
   } catch (err) {
     if (err?.name === "AbortError") {
-      throw new Error(`Remote production sync timed out after ${timeoutMs / 1000}s`);
+      throw new Error(`Remote ${label} sync timed out after ${timeoutMs / 1000}s`);
     }
     throw err;
   } finally {
