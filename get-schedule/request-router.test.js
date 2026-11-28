@@ -53,10 +53,30 @@ describe("isIngestRequest", () => {
     expect(extractIngestText(encoded, {})).toBe(sms);
   });
 
-  it("does not treat a sync POST as an SMS", () => {
+  it("does not treat a sync POST without an SMS as a message", () => {
     expect(extractIngestText({ path: "/", query: { mode: "iatse" } }, { mode: "iatse" })).toBe("");
     expect(isIngestRequest({ path: "/", query: {} }, {})).toBe(false);
     expect(isIngestRequest({ path: "/", query: { mode: "iatse" } }, null)).toBe(false);
+    expect(extractIngestText({ path: "/", query: { mode: "health" } }, { mode: "health", text: "Copy confirmed" })).toBe("");
+  });
+
+  it("stores the SMS when the phone posts it with an IATSE sync", () => {
+    const sms = "Copy confirmed thank you. 10pm Dec 6 at City Springs";
+    const query = { path: "/", query: { mode: "iatse" }, body: { text: sms } };
+    expect(extractIngestText(query, query.body)).toBe(sms);
+    expect(isIngestRequest(query, query.body)).toBe(true);
+
+    const custom = { path: "/", query: {}, body: { mode: "sync", SMSBody: sms } };
+    expect(extractIngestText(custom, custom.body)).toBe(sms);
+    expect(isIngestRequest(custom, custom.body)).toBe(true);
+
+    const form = {
+      path: "/",
+      query: { mode: "iatse" },
+      rawBody: Buffer.from(`mode=iatse&message=${encodeURIComponent(sms)}`)
+    };
+    expect(extractIngestText(form, { mode: "iatse" })).toBe(sms);
+    expect(isIngestRequest(form, { mode: "iatse" })).toBe(true);
   });
 
   it("detects /ingest/iatse927 path", () => {

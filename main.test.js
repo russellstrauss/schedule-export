@@ -105,6 +105,26 @@ describe("syncSchedule IATSE ingest", () => {
       })
     );
   });
+
+  it("stores a text posted with the IATSE sync instead of only syncing", async () => {
+    const sms = "Copy confirmed thank you. 10pm Dec 6 at City Springs";
+    const response = createResponse();
+
+    await syncSchedule(
+      { method: "POST", path: "/", query: { mode: "iatse" }, body: { text: sms } },
+      response
+    );
+
+    expect(getSchedule).not.toHaveBeenCalled();
+    expect(storeIatse927Message).toHaveBeenCalledWith(expect.objectContaining({ text: sms }));
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        stored: true,
+        message: "IATSE 927 message stored and calendar sync completed"
+      })
+    );
+  });
 });
 
 describe("syncSchedule HTTP routing", () => {
