@@ -3,7 +3,8 @@ import {
   parseRequestBody,
   isIngestRequest,
   isIatseOnlySyncRequest,
-  isSyncRequest
+  isSyncRequest,
+  extractIngestText
 } from "./request-router.js";
 
 describe("parseRequestBody", () => {
@@ -30,8 +31,32 @@ describe("isIngestRequest", () => {
   });
 
   it("rejects POST without ingest marker", () => {
-    expect(isIngestRequest({ path: "/" }, {})).toBe(false);
-    expect(isIngestRequest({ path: "/" }, null)).toBe(false);
+    expect(isIngestRequest({ path: "/", query: {} }, {})).toBe(false);
+    expect(isIngestRequest({ path: "/", query: {} }, null)).toBe(false);
+  });
+
+  it("stores a phone POST that sends only the SMS text", () => {
+    const sms = "Copy confirmed thank you. 10pm Dec 6 at City Springs";
+    const form = { path: "/", query: {}, body: { text: sms } };
+    expect(extractIngestText(form, form.body)).toBe(sms);
+    expect(isIngestRequest(form, form.body)).toBe(true);
+
+    const raw = { path: "/", query: {}, body: sms };
+    expect(extractIngestText(raw, null)).toBe(sms);
+    expect(isIngestRequest(raw, null)).toBe(true);
+
+    const encoded = {
+      path: "/",
+      query: {},
+      rawBody: Buffer.from(`message=${encodeURIComponent(sms)}`)
+    };
+    expect(extractIngestText(encoded, {})).toBe(sms);
+  });
+
+  it("does not treat a sync POST as an SMS", () => {
+    expect(extractIngestText({ path: "/", query: { mode: "iatse" } }, { mode: "iatse" })).toBe("");
+    expect(isIngestRequest({ path: "/", query: {} }, {})).toBe(false);
+    expect(isIngestRequest({ path: "/", query: { mode: "iatse" } }, null)).toBe(false);
   });
 
   it("detects /ingest/iatse927 path", () => {

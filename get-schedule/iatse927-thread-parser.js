@@ -51,6 +51,224 @@ export function inferYearForMonthDay(month, day, referenceDate) {
   return year;
 }
 
+const MONTH_NAME_PATTERN =
+  "january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec";
+
+const MONTH_NAME_NUMBERS = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12
+};
+
+const MONTH_NAME_DATE_RE = new RegExp(
+  `\\b(${MONTH_NAME_PATTERN})\\.?\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?` +
+    `((?:\\s*(?:,|&|and)\\s*\\d{1,2}(?!\\d)(?:st|nd|rd|th)?)*)` +
+    `(?:\\s*,?\\s*(\\d{4}))?`,
+  "gi"
+);
+
+const NUMERIC_DATE_RE = /\b(\d{1,2})\/(\d{1,2})(?!\d)(?:\/(\d{2,4}))?\b/g;
+const TRAILING_DAY_RE =
+  /\s*(?:,|&|and)\s*(\d{1,2})(?!\d)(?:st|nd|rd|th)?(?!\s*(?:am|pm)\b|\s*[:/]|[:/])/gi;
+
+/**
+ * Calendar day in the schedule timezone, so year inference does not follow UTC.
+ * @param {Date} referenceDate
+ * @param {string} [timezone]
+ */
+export function zonedReferenceDate(referenceDate = new Date(), timezone = DEFAULT_TIMEZONE) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  /** @type {Record<string, string>} */
+  const parts = {};
+  formatter.formatToParts(referenceDate).forEach((part) => {
+    if (part.type !== "literal") parts[part.type] = part.value;
+  });
+  return new Date(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+}
+
+/**
+ * @param {number} statedYear
+ * @param {number} month
+ * @param {number} day
+ * @param {Date} referenceDate
+ */
+function yearForScheduleDate(statedYear, month, day, referenceDate) {
+  const ref = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate()
+  );
+  const inferredYear = inferYearForMonthDay(month, day, ref);
+  const inferred = new Date(inferredYear, month - 1, day);
+  if (statedYear < inferredYear && inferred >= ref) return inferredYear;
+  return statedYear;
+}
+
+/**
+ * @param {string} dateStr
+ * @param {Date} referenceDate Calendar day, already zoned.
+ * @returns {string}
+ */
+function alignUpcomingScheduleDateFromCalendarDate(dateStr, referenceDate) {
+  const match = String(dateStr || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return String(dateStr || "").trim();
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = yearForScheduleDate(Number(match[3]), month, day, referenceDate);
+  return `${month}/${day}/${year}`;
+}
+
+/**
+ * Move a past-year month/day onto this year when that day is still ahead.
+ * "12/6/2025" on November 27, 2026 becomes "12/6/2026".
+ * @param {string} dateStr
+ * @param {Date} [referenceDate]
+ * @returns {string}
+ */
+export function alignUpcomingScheduleDate(dateStr, referenceDate = new Date()) {
+  return alignUpcomingScheduleDateFromCalendarDate(dateStr, zonedReferenceDate(referenceDate));
+}
+
+/**
+ * One schedule date, or the first date in a short Gemini date field.
+ * Accepts MM/DD/YYYY and month-name dates such as "Dec 6".
+ * @param {string} dateStr
+ * @param {Date} [referenceDate]
+ * @returns {string}
+ */
+export function canonicalizeScheduleDate(dateStr, referenceDate = new Date()) {
+  const ref = zonedReferenceDate(referenceDate);
+  const trimmed = String(dateStr || "").trim();
+  const numeric = trimmed.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (numeric) {
+    const month = Number(numeric[1]);
+    const day = Number(numeric[2]);
+    let year = numeric[3] ? Number(numeric[3]) : inferYearForMonthDay(month, day, ref);
+    if (numeric[3]?.length === 2) year += 2000;
+    return alignUpcomingScheduleDateFromCalendarDate(`${month}/${day}/${year}`, ref);
+  }
+  const dates = extractScheduleDateSpansFromCalendarDate(trimmed, ref);
+  return dates[0]?.date || "";
+}
+
+/**
+ * Dates named in an SMS, including "Dec 6 and 28" and "12/6 and 28".
+ * @param {string} text
+ * @param {Date} referenceDate Calendar day, already zoned.
+ * @returns {{ date: string; index: number }[]}
+ */
+function extractScheduleDateSpansFromCalendarDate(text, referenceDate) {
+  const ref = referenceDate;
+  /** @type {{ date: string; index: number }[]} */
+  const spans = [];
+  MONTH_NAME_DATE_RE.lastIndex = 0;
+  NUMERIC_DATE_RE.lastIndex = 0;
+
+  for (const match of text.matchAll(MONTH_NAME_DATE_RE)) {
+    const month = MONTH_NAME_NUMBERS[match[1].toLowerCase()];
+    if (!month) continue;
+    const statedYear = match[4]
+      ? Number(match[4])
+      : inferYearForMonthDay(month, Number(match[2]), ref);
+    const year = yearForScheduleDate(statedYear, month, Number(match[2]), ref);
+    const days = [Number(match[2])];
+    if (match[3]) {
+      for (const dayMatch of match[3].matchAll(/(\d{1,2})(?!\d)/g)) {
+        days.push(Number(dayMatch[1]));
+      }
+    }
+    days.forEach((day, offset) => {
+      if (day < 1 || day > 31) return;
+      spans.push({
+        date: `${month}/${day}/${year}`,
+        index: (match.index ?? 0) + offset
+      });
+    });
+  }
+
+  for (const match of text.matchAll(NUMERIC_DATE_RE)) {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+    let year = match[3] ? Number(match[3]) : inferYearForMonthDay(month, day, ref);
+    if (match[3]?.length === 2) year += 2000;
+    const stated = yearForScheduleDate(year, month, day, ref);
+    spans.push({
+      date: `${month}/${day}/${stated}`,
+      index: match.index ?? 0
+    });
+
+    const after = text.slice((match.index ?? 0) + match[0].length);
+    TRAILING_DAY_RE.lastIndex = 0;
+    let cursor = 0;
+    let trailing = TRAILING_DAY_RE.exec(after);
+    while (trailing && trailing.index === cursor) {
+      const extraDay = Number(trailing[1]);
+      if (extraDay >= 1 && extraDay <= 31) {
+        const extraYear = yearForScheduleDate(stated, month, extraDay, ref);
+        spans.push({
+          date: `${month}/${extraDay}/${extraYear}`,
+          index: (match.index ?? 0) + match[0].length + trailing.index
+        });
+      }
+      cursor = trailing.index + trailing[0].length;
+      trailing = TRAILING_DAY_RE.exec(after);
+    }
+  }
+
+  spans.sort((a, b) => a.index - b.index || a.date.localeCompare(b.date));
+  const seen = new Set();
+  return spans.filter((span) => {
+    if (seen.has(span.date)) return false;
+    seen.add(span.date);
+    return true;
+  });
+}
+
+/**
+ * @param {string} text
+ * @param {Date} [referenceDate]
+ * @returns {{ date: string; index: number }[]}
+ */
+export function extractScheduleDateSpans(text, referenceDate = new Date()) {
+  return extractScheduleDateSpansFromCalendarDate(text, zonedReferenceDate(referenceDate));
+}
+
+/**
+ * @param {string} text
+ * @param {Date} [referenceDate]
+ * @returns {string[]}
+ */
+export function extractScheduleDates(text, referenceDate = new Date()) {
+  return extractScheduleDateSpans(text, referenceDate).map((span) => span.date);
+}
+
 const TIME_ONLY_RE = /^\s*(\d{1,2}):(\d{2})\s*(AM|PM)\s*$/i;
 
 /**

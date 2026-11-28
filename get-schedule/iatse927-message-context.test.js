@@ -4,7 +4,9 @@ import {
   extractSchedulingHints,
   inferExpectedCalendarEvents,
   enrichMessagesForGemini,
-  buildGeminiContextPayload
+  buildGeminiContextPayload,
+  expandEntriesForUnparsedDates,
+  shiftsFromScheduleText
 } from "./iatse927-message-context.js";
 import {
   SAMPLE_CONFIRMATION_SMS,
@@ -77,6 +79,151 @@ describe("inferExpectedCalendarEvents", () => {
   });
 });
 
+describe("December 6 and 28", () => {
+  const receivedAt = new Date("2026-11-27T15:00:00Z");
+
+  it("treats Dec 6 and 28 as two confirmed calls", () => {
+    const text = "Confirmed Dec 6 and 28 State Farm 8AM. Thank you";
+    const hints = extractSchedulingHints(text, receivedAt);
+    expect(hints.dates).toEqual(["12/6/2026", "12/28/2026"]);
+    expect(hints.times24h).toEqual(["08:00"]);
+    expect(inferExpectedCalendarEvents(text, hints, [])?.count).toBe(2);
+
+    const shifts = shiftsFromScheduleText(text, receivedAt);
+    expect(shifts.map((shift) => shift.date)).toEqual(["12/6/2026", "12/28/2026"]);
+    expect(shifts.every((shift) => shift.callTime === "08:00")).toBe(true);
+  });
+
+  it("adds both days when Gemini omitted them", () => {
+    const text = "Confirmed Dec 6 and 28 State Farm 8AM. Thank you";
+    const entries = expandEntriesForUnparsedDates([], [{ text, receivedAt }]);
+    expect(entries).toHaveLength(2);
+    expect(entries.map((entry) => entry.date)).toEqual(["12/6/2026", "12/28/2026"]);
+    expect(entries[0]).toMatchObject({
+      show: "State Farm",
+      venue: "State Farm",
+      callTime: "08:00",
+      status: "confirmed"
+    });
+  });
+
+  it("adds only the day Gemini missed", () => {
+    const text = "Confirmed December 6 and 28 State Farm 8AM. Thank you";
+    const entries = expandEntriesForUnparsedDates(
+      [
+        {
+          source: "iatse927",
+          date: "12/6/2026",
+          callTime: "08:00",
+          show: "State Farm",
+          venue: "State Farm",
+          location: "",
+          position: "",
+          type: "Call",
+          status: "confirmed"
+        }
+      ],
+      [{ text, receivedAt }]
+    );
+    expect(entries.map((entry) => entry.date)).toEqual(["12/6/2026", "12/28/2026"]);
+  });
+
+  it("reads a reminder whose time comes before a month-name date", () => {
+    const text =
+      "Reminder for tomorrow morning 8am Wednesday Sept 2 at Sandy Springs theater for Les Mis load in. Please confirm";
+    const ref = new Date("2026-09-01T20:00:00Z");
+    const shifts = shiftsFromScheduleText(text, ref);
+    expect(shifts).toEqual([
+      expect.objectContaining({ date: "9/2/2026", callTime: "08:00", type: "Load In" })
+    ]);
+    const entries = expandEntriesForUnparsedDates([], [{ text, receivedAt: ref }]);
+    expect(entries[0]).toMatchObject({
+      date: "9/2/2026",
+      callTime: "08:00",
+      show: "Les Mis",
+      venue: "Sandy Springs theater",
+      type: "Load In"
+    });
+  });
+
+  it("does not add a reminder's extra call when the confirmation already names that date", () => {
+    const confirmation = "Confirmed 9/19 Ameris 11AM. Thank you";
+    const reminder =
+      "This is your reminder for 9/19-Need To Breathe-at Ameris for a 11AM Load-In and 10PM Load-Out. Please confirm.";
+    const receivedAt = new Date("2026-09-16T15:00:00Z");
+    const entries = expandEntriesForUnparsedDates(
+      [],
+      [
+        { text: confirmation, receivedAt },
+        { text: reminder, receivedAt: new Date("2026-09-18T22:00:00Z") }
+      ]
+    );
+    expect(entries).toEqual([
+      expect.objectContaining({ date: "9/19/2026", callTime: "11:00", show: "Ameris" })
+    ]);
+  });
+
+  it("pairs each date with the time that follows it", () => {
+    const text = "Confirmed Lakewood 8/22 8AM and 8/23 6PM. Thank you";
+    const shifts = shiftsFromScheduleText(text, new Date("2026-08-20T16:00:00Z"));
+    expect(shifts).toEqual([
+      expect.objectContaining({ date: "8/22/2026", callTime: "08:00" }),
+      expect.objectContaining({ date: "8/23/2026", callTime: "18:00" })
+    ]);
+  });
+
+  it("books the Copy confirmed calls and leaves the other offered day off", () => {
+    const receivedAt = new Date("2026-11-27T15:00:00Z");
+    const offer =
+      "Putting out the call for City Springs production of Anastasia at Sandy Springs theater Sunday Dec 6 for an overnight call 10 pm- 8am for carps and electrics. Monday Dec 7 at 8am to 10 pm there is another call for Carps and electrics, and an electric call for 8am to 6 pm. You cannot take both overnight and daytime calls. The load out is Dec 28 at 8am. Please confirm availability, which call, and department with me. Thank you";
+    const confirmation =
+      "Copy confirmed thank you. 10pm Dec 6 at City Springs in Sandy Springs theater as an electrician and Dec 28 8am for load out";
+
+    expect(classifyMessageKind(offer)).toBe("availability_ask");
+    expect(classifyMessageKind(confirmation)).toBe("confirmation");
+    expect(shiftsFromScheduleText(confirmation, receivedAt)).toEqual([
+      expect.objectContaining({ date: "12/6/2026", callTime: "22:00", type: "Call", position: "Electrician" }),
+      expect.objectContaining({ date: "12/28/2026", callTime: "08:00", type: "Load Out" })
+    ]);
+
+    const entries = expandEntriesForUnparsedDates(
+      [
+        {
+          source: "iatse927",
+          date: "12/7/2026",
+          callTime: "08:00",
+          show: "Anastasia",
+          venue: "Sandy Springs theater",
+          location: "",
+          position: "",
+          type: "Call",
+          status: "confirmed"
+        }
+      ],
+      [
+        { text: offer, receivedAt },
+        { text: confirmation, receivedAt }
+      ]
+    );
+    expect(entries.map((entry) => `${entry.date} ${entry.callTime}`)).toEqual([
+      "12/6/2026 22:00",
+      "12/28/2026 08:00"
+    ]);
+    expect(entries[0]).toMatchObject({
+      show: "Anastasia",
+      venue: "Sandy Springs theater",
+      position: "Electrician",
+      type: "Call"
+    });
+    expect(entries[1]).toMatchObject({
+      show: "Anastasia",
+      venue: "Sandy Springs theater",
+      type: "Load Out",
+      position: ""
+    });
+  });
+});
+
 describe("buildGeminiContextPayload", () => {
   it("includes domain guide and enriched messages", () => {
     const payload = buildGeminiContextPayload([
@@ -84,6 +231,7 @@ describe("buildGeminiContextPayload", () => {
       { text: SAMPLE_REMINDER_SMS, receivedAt: new Date("2026-06-02") }
     ]);
 
+    expect(payload.today).toMatch(/^\d{1,2}\/\d{1,2}\/\d{4}$/);
     expect(payload.domainGuide).toBeDefined();
     expect(payload.messages).toHaveLength(2);
     expect(payload.messages[0].messageKind).toBe("confirmation");

@@ -1,6 +1,7 @@
 import { DEFAULT_TIMEZONE } from "./sources/types.js";
+import { sourceId } from "./sources/iatse927.js";
 import { parseIatseTimeToken } from "./iatse927-call-expander.js";
-import { inferYearForMonthDay } from "./iatse927-thread-parser.js";
+import { extractScheduleDateSpans } from "./iatse927-thread-parser.js";
 
 /** @typedef {"steward" | "member" | "unknown"} MessageSpeaker */
 
@@ -35,6 +36,10 @@ export const DOMAIN_GUIDE = {
     example:
       "Already on 10am load in and load out ... Confirmed. My mistake → keep existing 10AM+10PM pair; ignore mistaken 12PM availability offer."
   },
+  copyConfirmed: {
+    example:
+      "Putting out the call for Dec 6 overnight, Dec 7 daytime, and a Dec 28 load out, then \"Copy confirmed ... 10pm Dec 6 ... and Dec 28 8am for load out\" → TWO events only: Dec 6 at 22:00 and Dec 28 at 08:00 Load Out. Do not schedule the other offered days."
+  },
   doNotSync: [
     "Availability asks without later confirmation",
     "Declines: already staffed, filled already, already working",
@@ -43,8 +48,7 @@ export const DOMAIN_GUIDE = {
   ]
 };
 
-const DATE_MD_RE = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/g;
-const TIME_TOKEN_RE = /(\d{1,2}(?::\d{2})?\s*(?:AM|PM))/gi;
+const TIME_TOKEN_RE = /(\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b)/gi;
 
 /**
  * @param {string} text
@@ -71,12 +75,35 @@ export function inferSpeaker(text) {
 
 /**
  * @param {string} text
+ * @returns {boolean}
+ */
+export function isConfirmationText(text) {
+  const trimmed = text.trim();
+  if (/^Confirmed\.?\s*My mistake/i.test(trimmed)) return false;
+  if (/^Confirmed\b/i.test(trimmed)) return true;
+  return /\bcopy\s+confirmed\b/i.test(trimmed);
+}
+
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function isAvailabilityAsk(text) {
+  const trimmed = text.trim();
+  if (/^Are you available\b/i.test(trimmed)) return true;
+  if (/^Putting out the call\b/i.test(trimmed)) return true;
+  return /please confirm availability/i.test(trimmed);
+}
+
+/**
+ * @param {string} text
  * @returns {MessageKind}
  */
 export function classifyMessageKind(text) {
   const trimmed = text.trim();
   if (/^Confirmed\.?\s*My mistake/i.test(trimmed)) return "correction";
-  if (/^Confirmed/i.test(trimmed)) return "confirmation";
+  if (isConfirmationText(trimmed)) return "confirmation";
+  if (isAvailabilityAsk(trimmed)) return "availability_ask";
   if (/^This is your reminder/i.test(trimmed)) return "reminder";
   if (/reminder/i.test(trimmed) && /\b(please be there|confirm|you will be there|you are scheduled|your shift|your call|your reminder)\b/i.test(trimmed)) {
     return "reminder";
@@ -98,18 +125,20 @@ export function classifyMessageKind(text) {
  * @param {string} text
  * @param {Date} referenceDate
  */
+/**
+ * @param {string} text
+ * @param {Date} referenceDate
+ * @returns {string[]}
+ */
+function extractScheduleDatesFromText(text, referenceDate) {
+  return extractScheduleDateSpans(text, referenceDate).map((span) => span.date);
+}
+
 export function extractSchedulingHints(text, referenceDate = new Date()) {
   /** @type {string[]} */
-  const dates = [];
+  const dates = extractScheduleDatesFromText(text, referenceDate);
   /** @type {string[]} */
   const times24 = [];
-
-  for (const match of text.matchAll(DATE_MD_RE)) {
-    const month = parseInt(match[1], 10);
-    const day = parseInt(match[2], 10);
-    const year = match[3] ? parseInt(match[3], 10) : inferYearForMonthDay(month, day, referenceDate);
-    dates.push(`${month}/${day}/${year}`);
-  }
 
   for (const match of text.matchAll(TIME_TOKEN_RE)) {
     const parsed = parseIatseTimeToken(match[1]);
@@ -129,7 +158,7 @@ export function extractSchedulingHints(text, referenceDate = new Date()) {
     mentionsLoadInOnly: /load\s*[- ]?in\s+only/i.test(text),
     mentionsLoadOutOnly: /load\s*out\s+by\s+itself/i.test(text),
     mentionsCapacityLimit: /filled already|already staffed|already working/i.test(text),
-    isConfirmation: /^Confirmed/i.test(text.trim()),
+    isConfirmation: isConfirmationText(text),
     isCorrection: /^Confirmed\.?\s*My mistake/i.test(text.trim())
   };
 }
@@ -152,6 +181,13 @@ export function inferExpectedCalendarEvents(text, hints, precedingContext = []) 
       count: 1,
       types: ["Call"],
       note: "Single quick-call time."
+    };
+  }
+
+  if (classifyMessageKind(text) === "reminder" && hints.dates.length > 1) {
+    return {
+      count: hints.dates.length,
+      note: "Reminder names more than one date (for example Dec 6 and 28)."
     };
   }
 
@@ -184,6 +220,14 @@ export function inferExpectedCalendarEvents(text, hints, precedingContext = []) 
         note: "Reminder text provides confirmation evidence for a shift."
       };
     }
+  }
+
+  if (hints.isConfirmation && hints.dates.length > 1) {
+    return {
+      count: hints.dates.length,
+      types: hints.dates.map(() => "Call"),
+      note: "Confirmation names more than one date (for example Dec 6 and 28)."
+    };
   }
 
   const confirmMatch = text.match(/^Confirmed\s+(\d{1,2}\/\d{1,2})\s+\S+\s+(.+?)(?:\.|Thank|$)/i);
@@ -319,10 +363,396 @@ export function enrichMessagesForGemini(messages) {
 /**
  * @param {{ text: string; receivedAt?: Date | null; sourceThread?: string }[]} messages
  */
+/**
+ * @param {Date} [referenceDate]
+ * @returns {string}
+ */
+function todayLabel(referenceDate = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: DEFAULT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  const parts = {};
+  formatter.formatToParts(referenceDate).forEach((part) => {
+    if (part.type !== "literal") parts[part.type] = part.value;
+  });
+  return `${Number(parts.month)}/${Number(parts.day)}/${parts.year}`;
+}
+
 export function buildGeminiContextPayload(messages) {
   return {
     timezone: DEFAULT_TIMEZONE,
+    today: todayLabel(),
     domainGuide: DOMAIN_GUIDE,
     messages: enrichMessagesForGemini(messages)
   };
+}
+
+/**
+ * @param {string} value
+ */
+function cleanLabel(value) {
+  return String(value || "")
+    .replace(/^(?:\d{1,2}\/\d{1,2}\s+|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?|september|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}\s+)/i, "")
+    .replace(/[-.,]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * @param {string} value
+ */
+function cutAtFor(value) {
+  return cleanLabel(String(value || "").split(/\bfor\b/i)[0]);
+}
+
+const WEEKDAY_RE = /\b(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i;
+
+/**
+ * @param {string} value
+ */
+function cleanVenue(value) {
+  return cleanLabel(cutAtFor(String(value || "").split(WEEKDAY_RE)[0]));
+}
+
+/**
+ * @param {string} text
+ * @returns {{ show: string; venue: string }}
+ */
+export function parseShowVenue(text) {
+  const dashed = text.match(/\d{1,2}\/\d{1,2}\s*-\s*([^-]+?)\s*-\s*(?:at\s+)?([^.]+)/i);
+  if (dashed) {
+    return { show: cleanLabel(dashed[1]), venue: cutAtFor(dashed[2]) };
+  }
+
+  const production = text.match(
+    /\bproduction of\s+(.+?)\s+at\s+(.+?)(?=\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|[.]|$)/i
+  );
+  if (production) {
+    const show = cleanLabel(production[1]);
+    if (show) return { show, venue: cleanVenue(production[2]) };
+  }
+
+  const atIn = text.match(/\bat\s+(.+?)\s+in\s+(.+?)(?=\s+as\b|\s+for\b|[.]|$)/i);
+  if (atIn) {
+    const venue = cleanVenue(atIn[2]);
+    if (venue) return { show: cleanLabel(atIn[1]) || venue, venue };
+  }
+
+  const atFor = text.match(/\bat\s+(.+?)\s+for\s+(.+?)(?:\s+load\b|[.]|$)/i);
+  if (atFor && !/^\d/.test(atFor[2].trim())) {
+    return { venue: cutAtFor(atFor[1]), show: cleanLabel(atFor[2]) };
+  }
+
+  const forAt = text.match(/\bfor\s+(.+?)\s+at\s+(.+?)(?:\s+for\b|[.]|$)/i);
+  if (forAt) {
+    const show = cleanLabel(forAt[1]);
+    if (show && !/^\d/.test(show)) return { show, venue: cutAtFor(forAt[2]) };
+  }
+
+  const confirmedVenueFirst = text.match(
+    /^Confirmed\s+([A-Za-z][\w'&.-]*(?:\s+[A-Za-z][\w'&.-]*)*)\s+(?:\d{1,2}\/|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))/i
+  );
+  if (confirmedVenueFirst) {
+    const venue = cleanLabel(confirmedVenueFirst[1]);
+    return { show: venue, venue };
+  }
+
+  const confirmedDateFirst = text.match(
+    /^Confirmed\s+(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?|september|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*(?:,|&|and)\s*\d{1,2}(?:st|nd|rd|th)?)*|\d{1,2}\/\d{1,2})\s+(.+?)\s+\d{1,2}(?::\d{2})?\s*(?:AM|PM)/i
+  );
+  if (confirmedDateFirst) {
+    const venue = cleanLabel(confirmedDateFirst[1]);
+    if (venue) return { show: venue, venue };
+  }
+
+  return { show: "IATSE", venue: "" };
+}
+
+/**
+ * @param {string} text
+ * @returns {"Load In" | "Load Out" | "Call"}
+ */
+function typeForSingleCall(text) {
+  const loadIn = /load\s*[- ]?in/i.test(text);
+  const loadOut = /load\s*[- ]?out/i.test(text);
+  if (loadOut && !loadIn) return "Load Out";
+  if (loadIn && !loadOut) return "Load In";
+  return "Call";
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function positionFromClause(text) {
+  const match = text.match(/\bas an?\s+([a-z]+)/i);
+  if (!match) return "";
+  const word = match[1].toLowerCase();
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/**
+ * @param {string} text
+ * @param {{ text: string }[]} messages
+ * @returns {{ show: string; venue: string }}
+ */
+function resolveShowVenue(text, messages) {
+  const own = parseShowVenue(text);
+  const production = messages
+    .map((message) => message.text)
+    .join("\n")
+    .match(
+      /\bproduction of\s+(.+?)\s+at\s+(.+?)(?=\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|[.]|$)/i
+    );
+  if (!production) return own;
+  const show = cleanLabel(production[1]);
+  const venue = cleanVenue(production[2]);
+  if (!show) return own;
+  if (own.show === "IATSE" || /^city springs$/i.test(own.show)) {
+    return { show, venue: own.venue || venue };
+  }
+  return own;
+}
+
+/**
+ * Call times attached to each date in one SMS.
+ * "Dec 6 and 28 ... 8AM" is one call on each day. "8/22 8AM and 8/23 6PM" pairs each date with the time that follows it.
+ * @param {string} text
+ * @param {Date} referenceDate
+ * @returns {{ date: string; callTime: string; type: "Load In" | "Load Out" | "Call" }[]}
+ */
+export function shiftsFromScheduleText(text, referenceDate = new Date()) {
+  /** @type {{ type: "date" | "time"; index: number; date?: string; time?: string }[]} */
+  const tokens = [];
+  for (const span of extractScheduleDateSpans(text, referenceDate)) {
+    tokens.push({ type: "date", index: span.index, date: span.date });
+  }
+  for (const match of text.matchAll(TIME_TOKEN_RE)) {
+    const parsed = parseIatseTimeToken(match[1]);
+    if (!parsed) continue;
+    tokens.push({ type: "time", index: match.index ?? 0, time: parsed });
+  }
+  tokens.sort((a, b) => a.index - b.index || (a.type === "time" ? -1 : 1));
+
+  /**
+   * Times before the first date stick to that date. Times between dates stick to the
+   * earlier date, so "10pm Dec 6 ... and Dec 28 8am" does not give both days 8am.
+   * @type {{ date: string; index: number; before: string[]; after: string[] }[]}
+   */
+  const dates = [];
+  /** @type {string[]} */
+  let leading = [];
+  for (const token of tokens) {
+    if (token.type === "time" && token.time) {
+      if (dates.length === 0) leading.push(token.time);
+      else dates[dates.length - 1].after.push(token.time);
+      continue;
+    }
+    if (token.type === "date" && token.date) {
+      dates.push({
+        date: token.date,
+        index: token.index,
+        before: dates.length === 0 ? leading : [],
+        after: []
+      });
+      leading = [];
+    }
+  }
+
+  const mentionsBoth = /load\s*[- ]?in/i.test(text) && /load\s*[- ]?out/i.test(text);
+  const withAfter = dates.filter((date) => date.after.length > 0);
+  const withBefore = dates.filter((date) => date.before.length > 0);
+  /** @type {{ date: string; index: number; times: string[] }[]} */
+  let assigned = [];
+
+  if (
+    (withAfter.length === 1 && withBefore.length === 0) ||
+    (withBefore.length === 1 && withAfter.length === 0)
+  ) {
+    const times = [...new Set(withAfter[0]?.after || withBefore[0]?.before || [])];
+    if ((dates.length > 1 && times.length > 1 && mentionsBoth) || (dates.length === 1 && times.length >= 2)) {
+      assigned = dates.map((date) => ({ date: date.date, index: date.index, times }));
+    } else if (dates.length === times.length && times.length > 1) {
+      assigned = dates.map((date, index) => ({
+        date: date.date,
+        index: date.index,
+        times: [times[index]]
+      }));
+    } else {
+      const callTime = [...times].sort()[0];
+      assigned = dates.map((date) => ({ date: date.date, index: date.index, times: [callTime] }));
+    }
+  } else {
+    assigned = dates
+      .map((date) => ({
+        date: date.date,
+        index: date.index,
+        times: [...new Set([...date.before, ...date.after])]
+      }))
+      .filter((date) => date.times.length > 0);
+  }
+
+  /** @type {{ date: string; callTime: string; type: "Load In" | "Load Out" | "Call"; position: string }[]} */
+  const shifts = [];
+  for (const item of assigned) {
+    const next = dates.find((date) => date.index > item.index);
+    const clause = text.slice(item.index, next ? next.index : text.length);
+    const times = [...new Set(item.times)];
+    const position = positionFromClause(clause);
+    if (times.length >= 2) {
+      const sorted = [...times].sort();
+      shifts.push({ date: item.date, callTime: sorted[0], type: "Load In", position });
+      if (sorted[sorted.length - 1] !== sorted[0]) {
+        shifts.push({
+          date: item.date,
+          callTime: sorted[sorted.length - 1],
+          type: "Load Out",
+          position: ""
+        });
+      }
+      continue;
+    }
+    shifts.push({
+      date: item.date,
+      callTime: times[0],
+      type: typeForSingleCall(clause),
+      position
+    });
+  }
+
+  const seen = new Set();
+  return shifts.filter((shift) => {
+    const key = `${shift.date}|${shift.callTime}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Add confirmed or reminder-only shifts Gemini left out, including "Dec 6 and 28".
+ * A reminder does not add a second call on a date a confirmation already named.
+ * @param {import("./sources/types.js").ScheduleEntry[]} entries
+ * @param {{ text: string; receivedAt?: Date | null }[]} messages
+ * @returns {import("./sources/types.js").ScheduleEntry[]}
+ */
+/**
+ * Dates named only in an availability offer are not calls. A later confirmation
+ * that names Dec 6 and Dec 28 leaves the offered Dec 7 off the calendar.
+ * @param {import("./sources/types.js").ScheduleEntry[]} entries
+ * @param {{ text: string; receivedAt?: Date | null }[]} messages
+ */
+function omitUnacceptedOfferDates(entries, messages) {
+  /** @type {Set<string>} */
+  const offered = new Set();
+  /** @type {Set<string>} */
+  const accepted = new Set();
+  for (const message of messages) {
+    const kind = classifyMessageKind(message.text);
+    const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
+    const dates = extractScheduleDateSpans(message.text, ref).map((span) => span.date);
+    if (kind === "availability_ask") dates.forEach((date) => offered.add(date));
+    if (kind === "confirmation" || kind === "reminder") dates.forEach((date) => accepted.add(date));
+  }
+  if (accepted.size === 0) return entries;
+  return entries.filter((entry) => !offered.has(entry.date) || accepted.has(entry.date));
+}
+
+/**
+ * @param {{ date: string; callTime: string; type: "Load In" | "Load Out" | "Call"; position: string; show: string; venue: string; index: number }} shift
+ */
+function entryFromConfirmationShift(shift) {
+  return {
+    source: sourceId,
+    date: shift.date,
+    callTime: shift.callTime,
+    show: shift.show || shift.venue || "IATSE",
+    venue: shift.venue || "",
+    location: "",
+    position: shift.position || "",
+    type: shift.type,
+    status: "confirmed",
+    evidenceIndices: [shift.index]
+  };
+}
+
+export function expandEntriesForUnparsedDates(entries, messages) {
+  /** @type {Map<string, { date: string; callTime: string; type: "Load In" | "Load Out" | "Call"; position: string; show: string; venue: string; index: number }[]>} */
+  const confirmationByDate = new Map();
+  messages.forEach((message, index) => {
+    if (classifyMessageKind(message.text) !== "confirmation") return;
+    const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
+    const { show, venue } = resolveShowVenue(message.text, messages);
+    for (const shift of shiftsFromScheduleText(message.text, ref)) {
+      const list = confirmationByDate.get(shift.date) || [];
+      list.push({ ...shift, show, venue, index });
+      confirmationByDate.set(shift.date, list);
+    }
+  });
+
+  /** @type {import("./sources/types.js").ScheduleEntry[]} */
+  const next = [];
+  const seen = new Set();
+  for (const [date, shifts] of confirmationByDate) {
+    const wanted = new Set(shifts.map((shift) => shift.callTime));
+    const existing = entries.filter((entry) => entry.date === date);
+    const existingAgrees = existing.length > 0 && existing.every((entry) => wanted.has(entry.callTime));
+    if (existingAgrees) {
+      for (const entry of existing) {
+        const key = `${entry.date}|${entry.callTime}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ ...entry });
+      }
+    }
+    for (const shift of shifts) {
+      if (existingAgrees && existing.some((entry) => entry.callTime === shift.callTime)) continue;
+      const key = `${shift.date}|${shift.callTime}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(entryFromConfirmationShift(shift));
+    }
+  }
+
+  for (const entry of entries) {
+    if (confirmationByDate.has(entry.date)) continue;
+    const key = `${entry.date}|${entry.callTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push({ ...entry });
+  }
+
+  /** @type {Set<string>} */
+  const confirmedDates = new Set(confirmationByDate.keys());
+
+  const representedDates = new Set(next.map((entry) => entry.date));
+  messages.forEach((message, index) => {
+    if (classifyMessageKind(message.text) !== "reminder") return;
+    const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
+    const { show, venue } = resolveShowVenue(message.text, messages);
+    for (const shift of shiftsFromScheduleText(message.text, ref)) {
+      if (representedDates.has(shift.date) || confirmedDates.has(shift.date)) continue;
+      const key = `${shift.date}|${shift.callTime}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      representedDates.add(shift.date);
+      next.push({
+        source: sourceId,
+        date: shift.date,
+        callTime: shift.callTime,
+        show: show || venue || "IATSE",
+        venue: venue || "",
+        location: "",
+        position: shift.position || "",
+        type: shift.type,
+        status: "confirmed",
+        evidenceIndices: [index]
+      });
+    }
+  });
+
+  return omitUnacceptedOfferDates(next, messages);
 }
