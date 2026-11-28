@@ -5,6 +5,8 @@
 # Branch develop deploys sync-schedule-develop, a separate testing URL.
 # Every other branch, including main, deploys sync-schedule.
 # The first step makes sure pushes to develop start that deploy.
+# That step is optional: the cloud-sdk image has no python3 on PATH, and a
+# failure there must not skip the function deploy.
 # BRANCH_NAME is a build substitution, not a step environment variable,
 # unless it is mapped here. Without that mapping every build looks manual
 # and deploys the production function.
@@ -16,6 +18,7 @@ steps:
     args:
       - -c
       - ENSURE_TRIGGER_OPTIONAL=1 bash deployment/setup-develop-trigger.sh
+    allowFailure: true
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     env:

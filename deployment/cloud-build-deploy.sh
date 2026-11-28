@@ -85,7 +85,11 @@ if [ "$FUNCTION_NAME" != "$PROD_FUNCTION" ]; then
   fi
 
   if [ "$seed" = true ]; then
-    if ! command -v python3 >/dev/null 2>&1; then
+    PY=""
+    if PY="$(bash "$ROOT/deployment/resolve-python.sh" 2>/dev/null)"; then
+      :
+    fi
+    if [ -z "$PY" ]; then
       echo "python3 is not available. Deploying ${FUNCTION_NAME} without copying environment variables."
     else
       set +e
@@ -99,7 +103,7 @@ if [ "$FUNCTION_NAME" != "$PROD_FUNCTION" ]; then
       if [ "$prod_status" -ne 0 ]; then
         echo "Could not read ${PROD_FUNCTION} runtime config. ${FUNCTION_NAME} will deploy without copied environment variables."
       else
-        plan="$(python3 "$ROOT/deployment/develop-runtime-config.py" \
+        plan="$("$PY" "$ROOT/deployment/develop-runtime-config.py" \
           --prod-json "$PROD_JSON" \
           --target-json "$TARGET_JSON" \
           --env-file "$ENV_FILE")"
@@ -116,7 +120,7 @@ if [ "$FUNCTION_NAME" != "$PROD_FUNCTION" ]; then
             echo "Copying ${secret_count} Secret Manager bindings from ${PROD_FUNCTION}."
             DEPLOY+=(--set-secrets="$secrets")
           fi
-          service_account="$(python3 - "$PROD_JSON" <<'PY'
+          service_account="$("$PY" - "$PROD_JSON" <<'PY'
 import json
 import sys
 

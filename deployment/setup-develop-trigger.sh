@@ -10,4 +10,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export DEVELOP_TRIGGER_PROJECT="${1:-${DEVELOP_TRIGGER_PROJECT:-gen-lang-client-0523900922}}"
 export DEVELOP_TRIGGER_REGION="${2:-${DEVELOP_TRIGGER_REGION:-northamerica-northeast2}}"
-exec python3 "$ROOT/deployment/ensure-develop-trigger.py"
+if ! PY="$(bash "$ROOT/deployment/resolve-python.sh")"; then
+  if [ "${ENSURE_TRIGGER_OPTIONAL:-}" = "1" ]; then
+    echo "Python is not available. Continuing without creating the develop trigger."
+    exit 0
+  fi
+  exit 1
+fi
+exec "$PY" "$ROOT/deployment/ensure-develop-trigger.py"
