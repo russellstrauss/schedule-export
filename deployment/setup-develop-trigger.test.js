@@ -45,6 +45,14 @@ for arg in "$@"; do
   if [ "$prev" = "--source" ]; then source_file="$arg"; fi
   prev="$arg"
 done
+if [ "$1" = "info" ]; then
+  if [ -n "\${BUNDLED_PYTHON:-}" ]; then
+    printf '%s\\n' "$BUNDLED_PYTHON"
+    exit 0
+  fi
+  echo "no bundled python" >&2
+  exit 1
+fi
 if [ "$1 $2 $3" = "builds triggers list" ]; then
   if [ "$region" != "northamerica-northeast2" ]; then
     echo "ERROR: PERMISSION_DENIED wrong region" >&2
@@ -90,9 +98,17 @@ exit 1
   }
 }
 
-function runSetup(capture, env = {}) {
+function runSetup(capture, env = {}, options = {}) {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "trigger-gcloud-"));
   writeFakeGcloud(binDir);
+  let pathValue = [binDir, process.env.PATH].filter(Boolean).join(path.delimiter);
+  if (options.hideSystemPython) {
+    for (const tool of ["bash", "dirname", "cat", "cp"]) {
+      const source = [`/bin/${tool}`, `/usr/bin/${tool}`].find((candidate) => fs.existsSync(candidate));
+      fs.symlinkSync(source, path.join(binDir, tool));
+    }
+    pathValue = binDir;
+  }
   let stdout = "";
   let status = 0;
   try {
@@ -100,7 +116,7 @@ function runSetup(capture, env = {}) {
       cwd: root,
       env: {
         ...process.env,
-        PATH: [binDir, process.env.PATH].filter(Boolean).join(path.delimiter),
+        PATH: pathValue,
         CAPTURE: capture,
         ...env
       },
@@ -166,6 +182,30 @@ describe("develop Cloud Build trigger", () => {
     expect(status).toBe(1);
     expect(stdout).toContain("northamerica-northeast2");
     expect(stdout).toContain("push-production-schedule-sync");
+  });
+
+  it("uses gcloud's bundled Python when python3 is not on PATH", () => {
+    const capture = fs.mkdtempSync(path.join(os.tmpdir(), "trigger-bundled-python-"));
+    fs.writeFileSync(path.join(capture, "triggers.json"), JSON.stringify([productionTrigger]));
+    const python = execFileSync("bash", ["-lc", "command -v python3"], { encoding: "utf8" }).trim();
+    const { stdout, status } = runSetup(
+      capture,
+      { BRANCH_NAME: "main", BUNDLED_PYTHON: python },
+      { hideSystemPython: true }
+    );
+    expect(status).toBe(0);
+    expect(stdout).toContain("Created Cloud Build trigger push-develop-schedule-sync");
+  });
+
+  it("continues a Cloud Build when Python is missing and trigger setup is optional", () => {
+    const capture = fs.mkdtempSync(path.join(os.tmpdir(), "trigger-no-python-"));
+    const { stdout, status } = runSetup(
+      capture,
+      { ENSURE_TRIGGER_OPTIONAL: "1" },
+      { hideSystemPython: true }
+    );
+    expect(status).toBe(0);
+    expect(stdout).toContain("Python is not available");
   });
 
   it("continues a Cloud Build when trigger setup is optional and denied", () => {
