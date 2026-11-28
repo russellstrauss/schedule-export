@@ -36,6 +36,10 @@ export const DOMAIN_GUIDE = {
     example:
       "Already on 10am load in and load out ... Confirmed. My mistake → keep existing 10AM+10PM pair; ignore mistaken 12PM availability offer."
   },
+  copyConfirmed: {
+    example:
+      "Putting out the call for Dec 6 overnight, Dec 7 daytime, and a Dec 28 load out, then \"Copy confirmed ... 10pm Dec 6 ... and Dec 28 8am for load out\" → TWO events only: Dec 6 at 22:00 and Dec 28 at 08:00 Load Out. Do not schedule the other offered days."
+  },
   doNotSync: [
     "Availability asks without later confirmation",
     "Declines: already staffed, filled already, already working",
@@ -71,12 +75,35 @@ export function inferSpeaker(text) {
 
 /**
  * @param {string} text
+ * @returns {boolean}
+ */
+export function isConfirmationText(text) {
+  const trimmed = text.trim();
+  if (/^Confirmed\.?\s*My mistake/i.test(trimmed)) return false;
+  if (/^Confirmed\b/i.test(trimmed)) return true;
+  return /\bcopy\s+confirmed\b/i.test(trimmed);
+}
+
+/**
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function isAvailabilityAsk(text) {
+  const trimmed = text.trim();
+  if (/^Are you available\b/i.test(trimmed)) return true;
+  if (/^Putting out the call\b/i.test(trimmed)) return true;
+  return /please confirm availability/i.test(trimmed);
+}
+
+/**
+ * @param {string} text
  * @returns {MessageKind}
  */
 export function classifyMessageKind(text) {
   const trimmed = text.trim();
   if (/^Confirmed\.?\s*My mistake/i.test(trimmed)) return "correction";
-  if (/^Confirmed/i.test(trimmed)) return "confirmation";
+  if (isConfirmationText(trimmed)) return "confirmation";
+  if (isAvailabilityAsk(trimmed)) return "availability_ask";
   if (/^This is your reminder/i.test(trimmed)) return "reminder";
   if (/reminder/i.test(trimmed) && /\b(please be there|confirm|you will be there|you are scheduled|your shift|your call|your reminder)\b/i.test(trimmed)) {
     return "reminder";
@@ -131,7 +158,7 @@ export function extractSchedulingHints(text, referenceDate = new Date()) {
     mentionsLoadInOnly: /load\s*[- ]?in\s+only/i.test(text),
     mentionsLoadOutOnly: /load\s*out\s+by\s+itself/i.test(text),
     mentionsCapacityLimit: /filled already|already staffed|already working/i.test(text),
-    isConfirmation: /^Confirmed/i.test(text.trim()),
+    isConfirmation: isConfirmationText(text),
     isCorrection: /^Confirmed\.?\s*My mistake/i.test(text.trim())
   };
 }
@@ -381,6 +408,15 @@ function cutAtFor(value) {
   return cleanLabel(String(value || "").split(/\bfor\b/i)[0]);
 }
 
+const WEEKDAY_RE = /\b(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i;
+
+/**
+ * @param {string} value
+ */
+function cleanVenue(value) {
+  return cleanLabel(cutAtFor(String(value || "").split(WEEKDAY_RE)[0]));
+}
+
 /**
  * @param {string} text
  * @returns {{ show: string; venue: string }}
@@ -389,6 +425,20 @@ export function parseShowVenue(text) {
   const dashed = text.match(/\d{1,2}\/\d{1,2}\s*-\s*([^-]+?)\s*-\s*(?:at\s+)?([^.]+)/i);
   if (dashed) {
     return { show: cleanLabel(dashed[1]), venue: cutAtFor(dashed[2]) };
+  }
+
+  const production = text.match(
+    /\bproduction of\s+(.+?)\s+at\s+(.+?)(?=\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|[.]|$)/i
+  );
+  if (production) {
+    const show = cleanLabel(production[1]);
+    if (show) return { show, venue: cleanVenue(production[2]) };
+  }
+
+  const atIn = text.match(/\bat\s+(.+?)\s+in\s+(.+?)(?=\s+as\b|\s+for\b|[.]|$)/i);
+  if (atIn) {
+    const venue = cleanVenue(atIn[2]);
+    if (venue) return { show: cleanLabel(atIn[1]) || venue, venue };
   }
 
   const atFor = text.match(/\bat\s+(.+?)\s+for\s+(.+?)(?:\s+load\b|[.]|$)/i);
@@ -434,6 +484,40 @@ function typeForSingleCall(text) {
 }
 
 /**
+ * @param {string} text
+ * @returns {string}
+ */
+function positionFromClause(text) {
+  const match = text.match(/\bas an?\s+([a-z]+)/i);
+  if (!match) return "";
+  const word = match[1].toLowerCase();
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+/**
+ * @param {string} text
+ * @param {{ text: string }[]} messages
+ * @returns {{ show: string; venue: string }}
+ */
+function resolveShowVenue(text, messages) {
+  const own = parseShowVenue(text);
+  const production = messages
+    .map((message) => message.text)
+    .join("\n")
+    .match(
+      /\bproduction of\s+(.+?)\s+at\s+(.+?)(?=\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b|[.]|$)/i
+    );
+  if (!production) return own;
+  const show = cleanLabel(production[1]);
+  const venue = cleanVenue(production[2]);
+  if (!show) return own;
+  if (own.show === "IATSE" || /^city springs$/i.test(own.show)) {
+    return { show, venue: own.venue || venue };
+  }
+  return own;
+}
+
+/**
  * Call times attached to each date in one SMS.
  * "Dec 6 and 28 ... 8AM" is one call on each day. "8/22 8AM and 8/23 6PM" pairs each date with the time that follows it.
  * @param {string} text
@@ -451,75 +535,91 @@ export function shiftsFromScheduleText(text, referenceDate = new Date()) {
     if (!parsed) continue;
     tokens.push({ type: "time", index: match.index ?? 0, time: parsed });
   }
-  tokens.sort((a, b) => a.index - b.index);
+  tokens.sort((a, b) => a.index - b.index || (a.type === "time" ? -1 : 1));
 
-  /** @type {{ dates: string[]; times: string[]; pending: string[] }[]} */
-  const groups = [];
-  /** @type {{ dates: string[]; times: string[]; pending: string[] } | null} */
-  let current = null;
+  /**
+   * Times before the first date stick to that date. Times between dates stick to the
+   * earlier date, so "10pm Dec 6 ... and Dec 28 8am" does not give both days 8am.
+   * @type {{ date: string; index: number; before: string[]; after: string[] }[]}
+   */
+  const dates = [];
   /** @type {string[]} */
-  let pendingTimes = [];
+  let leading = [];
   for (const token of tokens) {
-    if (token.type === "time" && token.time && (!current || current.dates.length === 0)) {
-      pendingTimes.push(token.time);
+    if (token.type === "time" && token.time) {
+      if (dates.length === 0) leading.push(token.time);
+      else dates[dates.length - 1].after.push(token.time);
       continue;
     }
     if (token.type === "date" && token.date) {
-      if (!current || current.times.length > 0) {
-        current = { dates: [], times: [], pending: pendingTimes };
-        pendingTimes = [];
-        groups.push(current);
-      }
-      current.dates.push(token.date);
-    } else if (token.type === "time" && token.time && current) {
-      current.times.push(token.time);
-      current.pending = [];
+      dates.push({
+        date: token.date,
+        index: token.index,
+        before: dates.length === 0 ? leading : [],
+        after: []
+      });
+      leading = [];
     }
   }
 
   const mentionsBoth = /load\s*[- ]?in/i.test(text) && /load\s*[- ]?out/i.test(text);
-  /** @type {{ date: string; callTime: string; type: "Load In" | "Load Out" | "Call" }[]} */
-  const shifts = [];
+  const withAfter = dates.filter((date) => date.after.length > 0);
+  const withBefore = dates.filter((date) => date.before.length > 0);
+  /** @type {{ date: string; index: number; times: string[] }[]} */
+  let assigned = [];
 
-  for (const group of groups) {
-    const dates = [...new Set(group.dates)];
-    const times = [...new Set(group.times.length > 0 ? group.times : group.pending)];
-    if (dates.length === 0 || times.length === 0) continue;
-
-    if (dates.length > 1 && times.length > 1 && mentionsBoth) {
-      const sorted = [...times].sort();
-      for (const date of dates) {
-        shifts.push({ date, callTime: sorted[0], type: "Load In" });
-        shifts.push({ date, callTime: sorted[sorted.length - 1], type: "Load Out" });
-      }
-      continue;
-    }
-
-    if (dates.length === 1 && times.length >= 2) {
-      const sorted = [...times].sort();
-      const loadIn = sorted[0];
-      const loadOut = sorted[sorted.length - 1];
-      shifts.push({
-        date: dates[0],
-        callTime: loadIn,
-        type: mentionsBoth || times.length >= 2 ? "Load In" : typeForSingleCall(text)
-      });
-      if (loadOut !== loadIn) {
-        shifts.push({ date: dates[0], callTime: loadOut, type: "Load Out" });
-      }
-      continue;
-    }
-
-    if (times.length === 1 || dates.length !== times.length) {
+  if (
+    (withAfter.length === 1 && withBefore.length === 0) ||
+    (withBefore.length === 1 && withAfter.length === 0)
+  ) {
+    const times = [...new Set(withAfter[0]?.after || withBefore[0]?.before || [])];
+    if ((dates.length > 1 && times.length > 1 && mentionsBoth) || (dates.length === 1 && times.length >= 2)) {
+      assigned = dates.map((date) => ({ date: date.date, index: date.index, times }));
+    } else if (dates.length === times.length && times.length > 1) {
+      assigned = dates.map((date, index) => ({
+        date: date.date,
+        index: date.index,
+        times: [times[index]]
+      }));
+    } else {
       const callTime = [...times].sort()[0];
-      for (const date of dates) {
-        shifts.push({ date, callTime, type: typeForSingleCall(text) });
+      assigned = dates.map((date) => ({ date: date.date, index: date.index, times: [callTime] }));
+    }
+  } else {
+    assigned = dates
+      .map((date) => ({
+        date: date.date,
+        index: date.index,
+        times: [...new Set([...date.before, ...date.after])]
+      }))
+      .filter((date) => date.times.length > 0);
+  }
+
+  /** @type {{ date: string; callTime: string; type: "Load In" | "Load Out" | "Call"; position: string }[]} */
+  const shifts = [];
+  for (const item of assigned) {
+    const next = dates.find((date) => date.index > item.index);
+    const clause = text.slice(item.index, next ? next.index : text.length);
+    const times = [...new Set(item.times)];
+    const position = positionFromClause(clause);
+    if (times.length >= 2) {
+      const sorted = [...times].sort();
+      shifts.push({ date: item.date, callTime: sorted[0], type: "Load In", position });
+      if (sorted[sorted.length - 1] !== sorted[0]) {
+        shifts.push({
+          date: item.date,
+          callTime: sorted[sorted.length - 1],
+          type: "Load Out",
+          position: ""
+        });
       }
       continue;
     }
-
-    dates.forEach((date, index) => {
-      shifts.push({ date, callTime: times[index], type: typeForSingleCall(text) });
+    shifts.push({
+      date: item.date,
+      callTime: times[0],
+      type: typeForSingleCall(clause),
+      position
     });
   }
 
@@ -539,30 +639,106 @@ export function shiftsFromScheduleText(text, referenceDate = new Date()) {
  * @param {{ text: string; receivedAt?: Date | null }[]} messages
  * @returns {import("./sources/types.js").ScheduleEntry[]}
  */
-export function expandEntriesForUnparsedDates(entries, messages) {
-  const next = entries.map((entry) => ({ ...entry }));
-  const representedDates = new Set(next.map((entry) => entry.date));
-  const seen = new Set(next.map((entry) => `${entry.date}|${entry.callTime}`));
+/**
+ * Dates named only in an availability offer are not calls. A later confirmation
+ * that names Dec 6 and Dec 28 leaves the offered Dec 7 off the calendar.
+ * @param {import("./sources/types.js").ScheduleEntry[]} entries
+ * @param {{ text: string; receivedAt?: Date | null }[]} messages
+ */
+function omitUnacceptedOfferDates(entries, messages) {
   /** @type {Set<string>} */
-  const confirmedDates = new Set();
+  const offered = new Set();
+  /** @type {Set<string>} */
+  const accepted = new Set();
+  for (const message of messages) {
+    const kind = classifyMessageKind(message.text);
+    const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
+    const dates = extractScheduleDateSpans(message.text, ref).map((span) => span.date);
+    if (kind === "availability_ask") dates.forEach((date) => offered.add(date));
+    if (kind === "confirmation" || kind === "reminder") dates.forEach((date) => accepted.add(date));
+  }
+  if (accepted.size === 0) return entries;
+  return entries.filter((entry) => !offered.has(entry.date) || accepted.has(entry.date));
+}
 
-  messages.forEach((message) => {
+/**
+ * @param {{ date: string; callTime: string; type: "Load In" | "Load Out" | "Call"; position: string; show: string; venue: string; index: number }} shift
+ */
+function entryFromConfirmationShift(shift) {
+  return {
+    source: sourceId,
+    date: shift.date,
+    callTime: shift.callTime,
+    show: shift.show || shift.venue || "IATSE",
+    venue: shift.venue || "",
+    location: "",
+    position: shift.position || "",
+    type: shift.type,
+    status: "confirmed",
+    evidenceIndices: [shift.index]
+  };
+}
+
+export function expandEntriesForUnparsedDates(entries, messages) {
+  /** @type {Map<string, { date: string; callTime: string; type: "Load In" | "Load Out" | "Call"; position: string; show: string; venue: string; index: number }[]>} */
+  const confirmationByDate = new Map();
+  messages.forEach((message, index) => {
     if (classifyMessageKind(message.text) !== "confirmation") return;
     const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
-    for (const span of extractScheduleDateSpans(message.text, ref)) confirmedDates.add(span.date);
+    const { show, venue } = resolveShowVenue(message.text, messages);
+    for (const shift of shiftsFromScheduleText(message.text, ref)) {
+      const list = confirmationByDate.get(shift.date) || [];
+      list.push({ ...shift, show, venue, index });
+      confirmationByDate.set(shift.date, list);
+    }
   });
 
-  messages.forEach((message, index) => {
-    const kind = classifyMessageKind(message.text);
-    if (kind !== "confirmation" && kind !== "reminder") return;
-    const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
-    const { show, venue } = parseShowVenue(message.text);
-    for (const shift of shiftsFromScheduleText(message.text, ref)) {
-      if (representedDates.has(shift.date)) continue;
-      if (kind === "reminder" && confirmedDates.has(shift.date)) continue;
+  /** @type {import("./sources/types.js").ScheduleEntry[]} */
+  const next = [];
+  const seen = new Set();
+  for (const [date, shifts] of confirmationByDate) {
+    const wanted = new Set(shifts.map((shift) => shift.callTime));
+    const existing = entries.filter((entry) => entry.date === date);
+    const existingAgrees = existing.length > 0 && existing.every((entry) => wanted.has(entry.callTime));
+    if (existingAgrees) {
+      for (const entry of existing) {
+        const key = `${entry.date}|${entry.callTime}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({ ...entry });
+      }
+    }
+    for (const shift of shifts) {
+      if (existingAgrees && existing.some((entry) => entry.callTime === shift.callTime)) continue;
       const key = `${shift.date}|${shift.callTime}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      next.push(entryFromConfirmationShift(shift));
+    }
+  }
+
+  for (const entry of entries) {
+    if (confirmationByDate.has(entry.date)) continue;
+    const key = `${entry.date}|${entry.callTime}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push({ ...entry });
+  }
+
+  /** @type {Set<string>} */
+  const confirmedDates = new Set(confirmationByDate.keys());
+
+  const representedDates = new Set(next.map((entry) => entry.date));
+  messages.forEach((message, index) => {
+    if (classifyMessageKind(message.text) !== "reminder") return;
+    const ref = message.receivedAt instanceof Date ? message.receivedAt : new Date();
+    const { show, venue } = resolveShowVenue(message.text, messages);
+    for (const shift of shiftsFromScheduleText(message.text, ref)) {
+      if (representedDates.has(shift.date) || confirmedDates.has(shift.date)) continue;
+      const key = `${shift.date}|${shift.callTime}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      representedDates.add(shift.date);
       next.push({
         source: sourceId,
         date: shift.date,
@@ -570,7 +746,7 @@ export function expandEntriesForUnparsedDates(entries, messages) {
         show: show || venue || "IATSE",
         venue: venue || "",
         location: "",
-        position: "",
+        position: shift.position || "",
         type: shift.type,
         status: "confirmed",
         evidenceIndices: [index]
@@ -578,5 +754,5 @@ export function expandEntriesForUnparsedDates(entries, messages) {
     }
   });
 
-  return next;
+  return omitUnacceptedOfferDates(next, messages);
 }
