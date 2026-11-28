@@ -171,6 +171,57 @@ describe("December 6 and 28", () => {
       expect.objectContaining({ date: "8/23/2026", callTime: "18:00" })
     ]);
   });
+
+  it("books the Copy confirmed calls and leaves the other offered day off", () => {
+    const receivedAt = new Date("2026-11-27T15:00:00Z");
+    const offer =
+      "Putting out the call for City Springs production of Anastasia at Sandy Springs theater Sunday Dec 6 for an overnight call 10 pm- 8am for carps and electrics. Monday Dec 7 at 8am to 10 pm there is another call for Carps and electrics, and an electric call for 8am to 6 pm. You cannot take both overnight and daytime calls. The load out is Dec 28 at 8am. Please confirm availability, which call, and department with me. Thank you";
+    const confirmation =
+      "Copy confirmed thank you. 10pm Dec 6 at City Springs in Sandy Springs theater as an electrician and Dec 28 8am for load out";
+
+    expect(classifyMessageKind(offer)).toBe("availability_ask");
+    expect(classifyMessageKind(confirmation)).toBe("confirmation");
+    expect(shiftsFromScheduleText(confirmation, receivedAt)).toEqual([
+      expect.objectContaining({ date: "12/6/2026", callTime: "22:00", type: "Call", position: "Electrician" }),
+      expect.objectContaining({ date: "12/28/2026", callTime: "08:00", type: "Load Out" })
+    ]);
+
+    const entries = expandEntriesForUnparsedDates(
+      [
+        {
+          source: "iatse927",
+          date: "12/7/2026",
+          callTime: "08:00",
+          show: "Anastasia",
+          venue: "Sandy Springs theater",
+          location: "",
+          position: "",
+          type: "Call",
+          status: "confirmed"
+        }
+      ],
+      [
+        { text: offer, receivedAt },
+        { text: confirmation, receivedAt }
+      ]
+    );
+    expect(entries.map((entry) => `${entry.date} ${entry.callTime}`)).toEqual([
+      "12/6/2026 22:00",
+      "12/28/2026 08:00"
+    ]);
+    expect(entries[0]).toMatchObject({
+      show: "Anastasia",
+      venue: "Sandy Springs theater",
+      position: "Electrician",
+      type: "Call"
+    });
+    expect(entries[1]).toMatchObject({
+      show: "Anastasia",
+      venue: "Sandy Springs theater",
+      type: "Load Out",
+      position: ""
+    });
+  });
 });
 
 describe("buildGeminiContextPayload", () => {

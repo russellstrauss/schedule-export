@@ -98,6 +98,7 @@ Extraction rules:
 - Cross-thread: Shawn scheduling + Tyler reminders may interleave; use receivedAt order.
 - Ignore availability-only, declines, filled-already, superseded offers, standalone reminder acks.
 - Use timezone ${DEFAULT_TIMEZONE}. payload.today is the current calendar day. A bare month and day that is still ahead of today is this year. "Dec 6 and 28" or "December 6 and 28" is two dates, December 6 and December 28, not one date.
+- "Copy confirmed" is a confirmation. "10pm Dec 6 ... and Dec 28 8am for load out" is December 6 at 22:00 and December 28 at 08:00 Load Out. A "putting out the call" or "please confirm availability" text is only an offer. Schedule the calls that confirmation names, not the other offered days.
 - Each entry needs evidenceIndices (0-based message indices) citing confirmation and/or supporting reminder.
 - confidence: high for explicit Confirmed; medium for steward assignment + acceptance; low if uncertain.
 - status "confirmed" only.
