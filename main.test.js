@@ -87,6 +87,24 @@ describe("syncSchedule IATSE ingest", () => {
 
     expect(order).toEqual(["store", "sync", "json"]);
   });
+
+  it("stores a phone POST that is only the SMS text and does not run a portal sync", async () => {
+    const sms = "Copy confirmed thank you. 10pm Dec 6 and Dec 28 8am for load out";
+    const response = createResponse();
+
+    await syncSchedule({ method: "POST", path: "/", query: {}, body: { text: sms } }, response);
+
+    expect(getSchedule).not.toHaveBeenCalled();
+    expect(storeIatse927Message).toHaveBeenCalledWith(expect.objectContaining({ text: sms }));
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        stored: true,
+        message: "IATSE 927 message stored and calendar sync completed"
+      })
+    );
+  });
 });
 
 describe("syncSchedule HTTP routing", () => {

@@ -3,7 +3,8 @@ import {
   parseRequestBody,
   isIngestRequest,
   isIatseOnlySyncRequest,
-  isSyncRequest
+  isSyncRequest,
+  extractIngestText
 } from "./get-schedule/request-router.js";
 import { isCloudRuntime } from "./get-schedule/runtime-env.js";
 import { exchangeOAuthCode } from "./get-schedule/google-calendar/auth.js";
@@ -96,7 +97,11 @@ export async function syncSchedule(req, res) {
         "./get-schedule/ingest-iatse927.js"
       );
       const { isSourceEnabled } = await import("./get-schedule/user-settings.js");
-      const payload = body && typeof body === "object" ? body : {};
+      const text = extractIngestText(req, body);
+      const payload = {
+        ...(body && typeof body === "object" ? body : {}),
+        ...(text ? { text } : {})
+      };
       const syncing = isSourceEnabled("iatse927");
       console.log("📱 Starting IATSE 927 ingest (store)...");
       const result = await storeIatse927Message(payload);
